@@ -49,9 +49,11 @@ $results = $sql->fetchAll();
 		
 		<div class="main clearfix">
 			<div class="game">
+
 			
 			
 				<iframe src="labirinth/index.html" name="labirinth" width="650" height="650" frameborder="0" scrolling="no" ><p>Your browser does not support iframes.</p> ></iframe>
+
 				
 
 			</div>
