@@ -9696,6 +9696,195 @@ cr.plugins_.Text = function(runtime)
 }());
 ;
 ;
+cr.plugins_.WebStorage = function(runtime)
+{
+	this.runtime = runtime;
+};
+(function()
+{
+	var pluginProto = cr.plugins_.WebStorage.prototype;
+	pluginProto.Type = function(plugin)
+	{
+		this.plugin = plugin;
+		this.runtime = plugin.runtime;
+	};
+	var typeProto = pluginProto.Type.prototype;
+	typeProto.onCreate = function()
+	{
+	};
+	pluginProto.Instance = function(type)
+	{
+		this.type = type;
+		this.runtime = type.runtime;
+	};
+	var instanceProto = pluginProto.Instance.prototype;
+	var prefix = "";
+	var is_arcade = (typeof window["is_scirra_arcade"] !== "undefined");
+	if (is_arcade)
+		prefix = "arcade" + window["scirra_arcade_id"];
+	instanceProto.onCreate = function()
+	{
+	};
+	pluginProto.cnds = {};
+	var cnds = pluginProto.cnds;
+	cnds.LocalStorageEnabled = function()
+	{
+		return true;
+	};
+	cnds.SessionStorageEnabled = function()
+	{
+		return true;
+	};
+	cnds.LocalStorageExists = function(key)
+	{
+		return localStorage.getItem(prefix + key) != null;
+	};
+	cnds.SessionStorageExists = function(key)
+	{
+		return sessionStorage.getItem(prefix + key) != null;
+	};
+	cnds.OnQuotaExceeded = function ()
+	{
+		return true;
+	};
+	pluginProto.acts = {};
+	var acts = pluginProto.acts;
+	acts.StoreLocal = function(key, data)
+	{
+		try {
+			localStorage.setItem(prefix + key, data);
+		}
+		catch (e)
+		{
+			this.runtime.trigger(cr.plugins_.WebStorage.prototype.cnds.OnQuotaExceeded, this);
+		}
+	};
+	acts.StoreSession = function(key,data)
+	{
+		try {
+			sessionStorage.setItem(prefix + key, data);
+		}
+		catch (e)
+		{
+			this.runtime.trigger(cr.plugins_.WebStorage.prototype.cnds.OnQuotaExceeded, this);
+		}
+	};
+	acts.RemoveLocal = function(key)
+	{
+		localStorage.removeItem(prefix + key);
+	};
+	acts.RemoveSession = function(key)
+	{
+		sessionStorage.removeItem(prefix + key);
+	};
+	acts.ClearLocal = function()
+	{
+		if (!is_arcade)
+			localStorage.clear();
+	};
+	acts.ClearSession = function()
+	{
+		if (!is_arcade)
+			sessionStorage.clear();
+	};
+	acts.JSONLoad = function (json_, mode_)
+	{
+		var d;
+		try {
+			d = JSON.parse(json_);
+		}
+		catch(e) { return; }
+		if (!d["c2dictionary"])			// presumably not a c2dictionary object
+			return;
+		var o = d["data"];
+		if (mode_ === 0 && !is_arcade)	// 'set' mode: must clear webstorage first
+			localStorage.clear();
+		var p;
+		for (p in o)
+		{
+			if (o.hasOwnProperty(p))
+			{
+				try {
+					localStorage.setItem(prefix + p, o[p]);
+				}
+				catch (e)
+				{
+					this.runtime.trigger(cr.plugins_.WebStorage.prototype.cnds.OnQuotaExceeded, this);
+					return;
+				}
+			}
+		}
+	};
+	pluginProto.exps = {};
+	var exps = pluginProto.exps;
+	exps.LocalValue = function(ret,key)
+	{
+		ret.set_string(localStorage.getItem(prefix + key) || "");
+	};
+	exps.SessionValue = function(ret,key)
+	{
+		ret.set_string(sessionStorage.getItem(prefix + key) || "");
+	};
+	exps.LocalCount = function(ret)
+	{
+		ret.set_int(is_arcade ? 0 : localStorage.length);
+	};
+	exps.SessionCount = function(ret)
+	{
+		ret.set_int(is_arcade ? 0 : sessionStorage.length);
+	};
+	exps.LocalAt = function(ret,n)
+	{
+		if (is_arcade)
+			ret.set_string("");
+		else
+			ret.set_string(localStorage.getItem(localStorage.key(n)) || "");
+	};
+	exps.SessionAt = function(ret,n)
+	{
+		if (is_arcade)
+			ret.set_string("");
+		else
+			ret.set_string(sessionStorage.getItem(sessionStorage.key(n)) || "");
+	};
+	exps.LocalKeyAt = function(ret,n)
+	{
+		if (is_arcade)
+			ret.set_string("");
+		else
+			ret.set_string(localStorage.key(n));
+	};
+	exps.SessionKeyAt = function(ret,n)
+	{
+		if (is_arcade)
+			ret.set_string("");
+		else
+			ret.set_string(sessionStorage.key(n));
+	};
+	exps.AsJSON = function (ret)
+	{
+		var o = {}, i, len, k;
+		for (i = 0, len = localStorage.length; i < len; i++)
+		{
+			k = localStorage.key(i);
+			if (is_arcade)
+			{
+				if (k.substr(0, prefix.length) === prefix)
+				{
+					o[k.substr(prefix.length)] = localStorage.getItem(k);
+				}
+			}
+			else
+				o[k] = localStorage.getItem(k);
+		}
+		ret.set_string(JSON.stringify({
+			"c2dictionary": true,
+			"data": o
+		}));
+	};
+}());
+;
+;
 cr.behaviors.EightDir = function(runtime)
 {
 	this.runtime = runtime;
@@ -10529,6 +10718,16 @@ cr.getProjectModel = function() { return [
 		true,
 		true
 	]
+,	[
+		cr.plugins_.WebStorage,
+		true,
+		false,
+		false,
+		false,
+		false,
+		false,
+		false
+	]
 	],
 	[
 	[
@@ -10839,6 +11038,20 @@ cr.getProjectModel = function() { return [
 		],
 		false,
 		false
+	]
+,	[
+		"t15",
+		cr.plugins_.WebStorage,
+		false,
+		0,
+		0,
+		null,
+		null,
+		[
+		],
+		false,
+		false
+		,[]
 	]
 	],
 	[
@@ -11347,7 +11560,7 @@ cr.getProjectModel = function() { return [
 				]
 			]
 ,			[
-				[642, 315, 0, 41.4729, 41.4729, 0, 0, 1, 0.5, 0.5],
+				[68, 234, 0, 41.4729, 41.4729, 0, 0, 1, 0.5, 0.5],
 				8,
 				[
 				],
@@ -11371,8 +11584,8 @@ cr.getProjectModel = function() { return [
 				[
 					"",
 					0,
-					"12pt Verdana",
-					"rgb(0,0,0)",
+					"18pt Verdana",
+					"rgb(255,255,255)",
 					0,
 					0,
 					0
@@ -11883,6 +12096,33 @@ cr.getProjectModel = function() { return [
 							[
 								0,
 								0
+							]
+						]
+						]
+					]
+,					[
+						15,
+						cr.plugins_.WebStorage.prototype.acts.StoreSession,
+						null
+						,[
+						[
+							1,
+							[
+								2,
+								"finalTime"
+							]
+						]
+,						[
+							7,
+							[
+								19,
+								cr.system_object.prototype.exps["int"]
+								,[
+[
+									23,
+									"CurrentTime"
+								]
+								]
 							]
 						]
 						]

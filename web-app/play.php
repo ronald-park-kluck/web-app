@@ -85,6 +85,17 @@ $results = $sql->fetchAll();
 			<p>2012. All Rights Reserved.</p>
 		</footer>
 		
+		<script>
+			sessionStorage.finalTime = 0;
+			
+			var checkFinalTime = setInterval(function () {
+
+				if ('finalTime' in sessionStorage && sessionStorage.finalTime > 0) {
+					console.log(sessionStorage.finalTime);
+					clearTimeout(checkFinalTime);
+				}
+			}, 100);
+		</script>
 		
 	</body>
 </html>
