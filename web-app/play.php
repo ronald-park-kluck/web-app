@@ -52,7 +52,7 @@ $results = $sql->fetchAll();
 
 			
 			
-				<iframe src="labirinth/index.html" name="labirinth" width="650" height="650" frameborder="0" scrolling="no" ><p>Your browser does not support iframes.</p> ></iframe>
+				<iframe src="labyrinth/index.html" name="labirinth" width="650" height="650" frameborder="0" scrolling="no" ><p>Your browser does not support iframes.</p> ></iframe>
 
 				
 
