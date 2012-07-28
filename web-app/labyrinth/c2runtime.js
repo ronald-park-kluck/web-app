@@ -7021,6 +7021,8 @@ cr.do_cmp = function (x, cmp, y)
 ;
 ;
 cr.plugins_.Audio = function(runtime)
+<<<<<<< HEAD:web-app/labyrinth/c2runtime.js
+=======
 {
 	this.runtime = runtime;
 };
@@ -7967,6 +7969,1211 @@ cr.plugins_.Keyboard = function(runtime)
 		var ret = (key === this.triggerKey);
 		this.eventRan = this.eventRan || ret;
 		return ret;
+	};
+}());
+;
+;
+cr.plugins_.Particles = function(runtime)
+>>>>>>> origin/master:web-app/labyrinth/c2runtime.js
+{
+	this.runtime = runtime;
+};
+(function ()
+{
+	var pluginProto = cr.plugins_.Audio.prototype;
+	pluginProto.Type = function(plugin)
+	{
+		this.plugin = plugin;
+		this.runtime = plugin.runtime;
+	};
+	var typeProto = pluginProto.Type.prototype;
+	typeProto.onCreate = function()
+	{
+	};
+	var audRuntime = null;
+	var audInst = null;
+	var audTag = "";
+	var appPath = "";			// for PhoneGap only
+	var API_HTML5 = 0;
+	var API_WEBAUDIO = 1;
+	var API_PHONEGAP = 2;
+	var API_APPMOBI = 3;
+	var api = API_HTML5;
+	var context = null;
+	var audioBuffers = [];		// cache of buffers
+	var audioInstances = [];	// cache of instances
+	var lastAudio = null;
+	var useOgg = false;			// determined at create time
+	var timescale_mode = 0;
+	var silent = false;
+	var C2AudioBuffer = function (src_, is_music)
+	{
+		this.src = src_;
+		this.myapi = api;
+		this.is_music = is_music;
+		this.added_end_listener = false;
+		if (api === API_WEBAUDIO && is_music)
+			this.myapi = API_HTML5;
+		this.bufferObject = null;
+		var request;
+		switch (this.myapi) {
+		case API_HTML5:
+			if (is_music && audRuntime.isCocoonJs)
+				ext["IDTK_APP"]["makeCall"]("addForceMusic", src_);
+			this.bufferObject = new Audio();
+			this.bufferObject.autoplay = false;	// this is only a source buffer, not an instance
+			this.bufferObject.preload = "auto";
+			this.bufferObject.src = src_;
+			break;
+		case API_WEBAUDIO:
+			request = new XMLHttpRequest();
+			request.open("GET", src_, true);
+			request.responseType = "arraybuffer";
+			request.onload = (function (self) { return function () {
+				context["decodeAudioData"](request.response, function (buffer) {
+						self.bufferObject = buffer;
+						if (!cr.is_undefined(self.playTagWhenReady))
+						{
+							var a = new C2AudioInstance(self, self.playTagWhenReady);
+							a.play(self.loopWhenReady);
+							audioInstances.push(a);
+						}
+					});
+			}; })(this);
+			request.send();
+			break;
+		case API_PHONEGAP:
+			this.bufferObject = true;
+			break;
+		case API_APPMOBI:
+			this.bufferObject = true;
+			break;
+		}
+	};
+	C2AudioBuffer.prototype.isLoaded = function ()
+	{
+		switch (this.myapi) {
+		case API_HTML5:
+			return this.bufferObject["readyState"] === 4;	// HAVE_ENOUGH_DATA
+		case API_WEBAUDIO:
+			return !!this.bufferObject;			// null until AJAX request completes
+		case API_PHONEGAP:
+			return true;
+		case API_APPMOBI:
+			return true;
+		}
+		return false;
+	};
+	var C2AudioInstance = function (buffer_, tag_)
+	{
+		this.tag = tag_;
+		this.fresh = true;
+		this.stopped = true;
+		this.src = buffer_.src;
+		this.buffer = buffer_;
+		this.myapi = buffer_.myapi;
+		this.is_music = buffer_.is_music;
+		this.playbackRate = 1;
+		this.pgended = true;			// for PhoneGap only: ended flag
+		this.resume_me = false;			// make sure resumes when leaving suspend
+		this.looping = false;
+		this.volume = 1;
+		this.mutevol = 1;
+		this.startTime = audRuntime.kahanTime.sum;
+		this.instanceObject = null;
+		var add_end_listener = false;
+		switch (this.myapi) {
+		case API_HTML5:
+			if (this.is_music)
+			{
+				this.instanceObject = buffer_.bufferObject;
+				add_end_listener = !buffer_.added_end_listener;
+				buffer_.added_end_listener = true;
+			}
+			else
+			{
+				this.instanceObject = new Audio();
+				this.instanceObject.autoplay = false;
+				this.instanceObject.src = buffer_.bufferObject.src;
+				add_end_listener = true;
+			}
+			if (add_end_listener)
+			{
+				this.instanceObject.addEventListener('ended', (function (self) {
+					return function () {
+						audTag = self.tag;
+						self.stopped = true;
+						audRuntime.trigger(cr.plugins_.Audio.prototype.cnds.OnEnded, audInst);
+					};
+				})(this));
+			}
+			break;
+		case API_WEBAUDIO:
+			if (buffer_.bufferObject)
+			{
+				this.instanceObject = context["createBufferSource"]();
+				this.instanceObject["buffer"] = buffer_.bufferObject;
+				this.instanceObject["connect"](context["destination"]);
+			}
+			break;
+		case API_PHONEGAP:
+			this.instanceObject = new window["Media"](appPath + this.src, null, null, (function (self) {
+				return function (status) {
+					if (status === window["Media"]["MEDIA_STOPPED"])
+					{
+						self.pgended = true;
+						self.stopped = true;
+						audTag = self.tag;
+						audRuntime.trigger(cr.plugins_.Audio.prototype.cnds.OnEnded, audInst);
+					}
+				};
+			})(this));
+			break;
+		case API_APPMOBI:
+			this.instanceObject = true;
+			break;
+		}
+	};
+	C2AudioInstance.prototype.hasEnded = function ()
+	{
+		switch (this.myapi) {
+		case API_HTML5:
+			return this.instanceObject.ended;
+		case API_WEBAUDIO:
+			if (!this.fresh && !this.stopped && this.instanceObject["loop"])
+				return false;
+			return (audRuntime.kahanTime.sum - this.startTime) > this.buffer.bufferObject["duration"];
+		case API_PHONEGAP:
+			return this.pgended;
+		case API_APPMOBI:
+			true;	// recycling an AppMobi sound does not matter because it will just do another throwaway playSound
+		}
+		return true;
+	};
+	C2AudioInstance.prototype.canBeRecycled = function ()
+	{
+		if (this.fresh || this.stopped)
+			return true;		// not yet used or is not playing
+		return this.hasEnded();
+	};
+	C2AudioInstance.prototype.play = function (looping)
+	{
+		var instobj = this.instanceObject;
+		this.looping = looping;
+		switch (this.myapi) {
+		case API_HTML5:
+			if (instobj.playbackRate !== 1.0)
+				instobj.playbackRate = 1.0;
+			if (instobj.volume !== 1.0)
+				instobj.volume = 1.0;
+			if (instobj.loop !== looping)
+				instobj.loop = looping;
+			if (instobj.muted)
+				instobj.muted = false;
+			if (!this.fresh && this.stopped && instobj.currentTime !== 0)
+			{
+				try {
+					instobj.currentTime = 0;
+				}
+				catch (err)
+				{
+;
+				}
+			}
+			this.instanceObject.play();
+			break;
+		case API_WEBAUDIO:
+			this.muted = false;
+			this.volume = 1;
+			this.mutevol = 1;
+			if (!this.fresh)
+			{
+				this.instanceObject = context["createBufferSource"]();
+				this.instanceObject["buffer"] = this.buffer.bufferObject;
+				this.instanceObject["connect"](context["destination"]);
+			}
+			this.instanceObject.loop = looping;
+			this.instanceObject["noteOn"](0);
+			break;
+		case API_PHONEGAP:
+			if (!this.fresh && this.stopped)
+				instobj["seekTo"](0);
+			instobj["play"]();
+			this.pgended = false;
+			break;
+		case API_APPMOBI:
+			if (audRuntime.isDirectCanvas)
+				AppMobi["context"]["playSound"](this.src);
+			else
+				AppMobi["player"]["playSound"](this.src);
+			break;
+		}
+		this.playbackRate = 1;
+		this.startTime = audRuntime.kahanTime.sum;
+		this.fresh = false;
+		this.stopped = false;
+	};
+	C2AudioInstance.prototype.stop = function ()
+	{
+		switch (this.myapi) {
+		case API_HTML5:
+			if (!this.instanceObject.paused)
+				this.instanceObject.pause();
+			break;
+		case API_WEBAUDIO:
+			this.instanceObject["noteOff"](0);
+			break;
+		case API_PHONEGAP:
+			this.instanceObject["stop"]();
+			break;
+		case API_APPMOBI:
+			break;
+		}
+		this.stopped = true;
+	};
+	C2AudioInstance.prototype.setVolume = function (v)
+	{
+		switch (this.myapi) {
+		case API_HTML5:
+			if (this.instanceObject.volume && this.instanceObject.volume !== v)
+				this.instanceObject.volume = v;
+			break;
+		case API_WEBAUDIO:
+			this.volume = v;
+			this.instanceObject["gain"]["value"] = v * this.mutevol;
+			break;
+		case API_PHONEGAP:
+			break;
+		case API_APPMOBI:
+			break;
+		}
+	};
+	C2AudioInstance.prototype.setMuted = function (m)
+	{
+		switch (this.myapi) {
+		case API_HTML5:
+			if (this.instanceObject.muted !== !!m)
+				this.instanceObject.muted = !!m;
+			break;
+		case API_WEBAUDIO:
+			this.mutevol = (m ? 0 : 1);
+			this.instanceObject["gain"]["value"] = this.volume * this.mutevol;
+			break;
+		case API_PHONEGAP:
+			break;
+		case API_APPMOBI:
+			break;
+		}
+	};
+	C2AudioInstance.prototype.setLooping = function (l)
+	{
+		this.looping = l;
+		switch (this.myapi) {
+		case API_HTML5:
+			if (this.instanceObject.loop !== !!l)
+				this.instanceObject.loop = !!l;
+			break;
+		case API_WEBAUDIO:
+			if (this.instanceObject.loop !== !!l)
+				this.instanceObject.loop = !!l;
+			break;
+		case API_PHONEGAP:
+			break;
+		case API_APPMOBI:
+			break;
+		}
+	};
+	C2AudioInstance.prototype.setPlaybackRate = function (r)
+	{
+		this.playbackRate = r;
+		this.updatePlaybackRate();
+	};
+	C2AudioInstance.prototype.updatePlaybackRate = function ()
+	{
+		var r = this.playbackRate;
+		if ((timescale_mode === 1 && !this.is_music) || timescale_mode === 2)
+			r *= audRuntime.timescale;
+		switch (this.myapi) {
+		case API_HTML5:
+			if (this.instanceObject.playbackRate !== r)
+				this.instanceObject.playbackRate = r;
+			break;
+		case API_WEBAUDIO:
+			if (this.instanceObject["playbackRate"]["value"] !== r)
+				this.instanceObject["playbackRate"]["value"] = r;
+			break;
+		case API_PHONEGAP:
+			break;
+		case API_APPMOBI:
+			break;
+		}
+	};
+	C2AudioInstance.prototype.setSuspended = function (s)
+	{
+		switch (this.myapi) {
+		case API_HTML5:
+			if (s)
+			{
+				if (!this.fresh && !this.stopped)
+				{
+					this.instanceObject["pause"]();
+					this.resume_me = true;
+				}
+				else
+					this.resume_me = false;
+			}
+			else
+			{
+				if (this.resume_me)
+					this.instanceObject["play"]();
+			}
+			break;
+		case API_WEBAUDIO:
+			if (s)
+			{
+				if (!this.fresh && !this.stopped)
+				{
+					this.instanceObject["noteOff"](0);
+					this.resume_me = true;
+				}
+				else
+					this.resume_me = false;
+			}
+			else
+			{
+				if (this.resume_me)
+				{
+					this.instanceObject = context["createBufferSource"]();
+					this.instanceObject["buffer"] = this.buffer.bufferObject;
+					this.instanceObject["connect"](context["destination"]);
+					this.instanceObject.loop = this.looping;
+					this.instanceObject["noteOn"](0);
+				}
+			}
+			break;
+		case API_PHONEGAP:
+			if (s)
+			{
+				if (!this.fresh && !this.stopped)
+				{
+					this.instanceObject["pause"]();
+					this.resume_me = true;
+				}
+				else
+					this.resume_me = false;
+			}
+			else
+			{
+				if (this.resume_me)
+					this.instanceObject["play"]();
+			}
+			break;
+		case API_APPMOBI:
+			break;
+		}
+	};
+	pluginProto.Instance = function(type)
+	{
+		this.type = type;
+		this.runtime = type.runtime;
+		audRuntime = this.runtime;
+		audInst = this;
+		context = null;
+		if (typeof AudioContext !== "undefined")
+		{
+			api = API_WEBAUDIO;
+			context = new AudioContext();
+		}
+		else if (typeof webkitAudioContext !== "undefined")
+		{
+			api = API_WEBAUDIO;
+			context = new webkitAudioContext();
+		}
+		if (api !== API_WEBAUDIO)
+		{
+			if (this.runtime.isPhoneGap)
+				api = API_PHONEGAP;
+			else if (this.runtime.isAppMobi)
+				api = API_APPMOBI;
+		}
+		if (api === API_PHONEGAP)
+		{
+			appPath = location.href;
+			var i = appPath.lastIndexOf("/");
+			if (i > -1)
+				appPath = appPath.substr(0, i + 1);
+			appPath = appPath.replace("file://", "");
+		}
+		if (this.runtime.isDirectCanvas)
+			useOgg = this.runtime.isAndroid;		// AAC on iOS, OGG on Android
+		else
+			useOgg = !!(new Audio().canPlayType('audio/ogg; codecs="vorbis"'));
+		switch (api) {
+		case API_HTML5:
+;
+			break;
+		case API_WEBAUDIO:
+;
+			break;
+		case API_PHONEGAP:
+;
+			break;
+		case API_APPMOBI:
+;
+			break;
+		default:
+;
+		}
+		this.runtime.tickMe(this);
+	};
+	var instanceProto = pluginProto.Instance.prototype;
+	instanceProto.onCreate = function ()
+	{
+		timescale_mode = this.properties[0];	// 0 = off, 1 = sounds only, 2 = all
+		this.runtime.addSuspendCallback(function(s)
+		{
+			audInst.onSuspend(s);
+		});
+	};
+	instanceProto.onSuspend = function (s)
+	{
+		var i, len;
+		for (i = 0, len = audioInstances.length; i < len; i++)
+			audioInstances[i].setSuspended(s);
+	};
+	instanceProto.tick = function ()
+	{
+		var i, len, a;
+		for (i = 0, len = audioInstances.length; i < len; i++)
+		{
+			a = audioInstances[i];
+			if (a.myapi !== API_HTML5 && a.myapi !== API_APPMOBI)
+			{
+				if (!a.fresh && !a.stopped && a.hasEnded())
+				{
+					a.stopped = true;
+					audTag = a.tag;
+					audRuntime.trigger(cr.plugins_.Audio.prototype.cnds.OnEnded, audInst);
+				}
+			}
+			if (timescale_mode !== 0)
+				a.updatePlaybackRate();
+		}
+	};
+	instanceProto.getAudioBuffer = function (src_, is_music)
+	{
+		var i, len, a;
+		for (i = 0, len = audioBuffers.length; i < len; i++)
+		{
+			a = audioBuffers[i];
+			if (a.src === src_)
+				return a;
+		}
+		a = new C2AudioBuffer(src_, is_music);
+		audioBuffers.push(a);
+		return a;
+	};
+	instanceProto.getAudioInstance = function (src_, tag, is_music, looping)
+	{
+		var i, len, a;
+		for (i = 0, len = audioInstances.length; i < len; i++)
+		{
+			a = audioInstances[i];
+			if (a.src === src_ && a.canBeRecycled())
+			{
+				a.tag = tag;
+				return a;
+			}
+		}
+		var b = this.getAudioBuffer(src_, is_music);
+		if (!b.bufferObject)
+		{
+			if (tag !== "<preload>")
+			{
+				b.playTagWhenReady = tag;
+				b.loopWhenReady = looping;
+			}
+			return null;
+		}
+		a = new C2AudioInstance(b, tag);
+		audioInstances.push(a);
+		return a;
+	};
+	var taggedAudio = [];
+	instanceProto.getAudioByTag = function (tag)
+	{
+		taggedAudio.length = 0;
+		if (!tag.length)
+		{
+			if (!lastAudio || lastAudio.hasEnded())
+				return;
+			else
+			{
+				taggedAudio.length = 1;
+				taggedAudio[0] = lastAudio;
+				return;
+			}
+		}
+		var i, len, a;
+		for (i = 0, len = audioInstances.length; i < len; i++)
+		{
+			a = audioInstances[i];
+			if (tag.toLowerCase() === a.tag.toLowerCase())
+				taggedAudio.push(a);
+		}
+	};
+	pluginProto.cnds = {};
+	var cnds = pluginProto.cnds;
+	cnds.OnEnded = function (t)
+	{
+		return audTag.toLowerCase() === t.toLowerCase();
+	};
+	cnds.PreloadsComplete = function ()
+	{
+		var i, len;
+		for (i = 0, len = audioBuffers.length; i < len; i++)
+		{
+			if (!audioBuffers[i].isLoaded())
+				return false;
+		}
+		return true;
+	};
+	pluginProto.acts = {};
+	var acts = pluginProto.acts;
+	acts.Play = function (file, looping, tag)
+	{
+		if (silent)
+			return;
+		var is_music = file[1];
+		var src = this.runtime.files_subfolder + file[0] + (useOgg ? ".ogg" : ".m4a");
+		lastAudio = this.getAudioInstance(src, tag, is_music, looping!==0);
+		if (!lastAudio)
+			return;
+		lastAudio.play(looping!==0);
+	};
+	acts.PlayByName = function (folder, filename, looping, tag)
+	{
+		if (silent)
+			return;
+		var is_music = (folder === 1);
+		var src = this.runtime.files_subfolder + filename.toLowerCase() + (useOgg ? ".ogg" : ".m4a");
+		lastAudio = this.getAudioInstance(src, tag, is_music, looping!==0);
+		if (!lastAudio)
+			return;
+		lastAudio.play(looping!==0);
+	};
+	acts.SetLooping = function (tag, looping)
+	{
+		this.getAudioByTag(tag);
+		var i, len;
+		for (i = 0, len = taggedAudio.length; i < len; i++)
+			taggedAudio[i].setLooping(looping === 0);
+	};
+	acts.SetMuted = function (tag, muted)
+	{
+		this.getAudioByTag(tag);
+		var i, len;
+		for (i = 0, len = taggedAudio.length; i < len; i++)
+			taggedAudio[i].setMuted(muted === 0);
+	};
+	acts.SetVolume = function (tag, vol)
+	{
+		this.getAudioByTag(tag);
+		var v = Math.pow(10, vol / 20);
+		if (v < 0)
+			v = 0;
+		if (v > 1)
+			v = 1;
+		var i, len;
+		for (i = 0, len = taggedAudio.length; i < len; i++)
+			taggedAudio[i].setVolume(v);
+	};
+	acts.Preload = function (file)
+	{
+		if (silent)
+			return;
+		var is_music = file[1];
+		var src = this.runtime.files_subfolder + file[0] + (useOgg ? ".ogg" : ".m4a");
+		if (api === API_APPMOBI)
+		{
+			AppMobi["player"]["loadSound"](src);
+			return;
+		}
+		else if (api === API_PHONEGAP)
+		{
+			return;
+		}
+		this.getAudioInstance(src, "<preload>", is_music, false);
+	};
+	acts.PreloadByName = function (folder, filename)
+	{
+		if (silent)
+			return;
+		var is_music = (folder === 1);
+		var src = this.runtime.files_subfolder + filename.toLowerCase() + (useOgg ? ".ogg" : ".m4a");
+		if (api === API_APPMOBI)
+		{
+			AppMobi["player"]["loadSound"](src);
+			return;
+		}
+		else if (api === API_PHONEGAP)
+		{
+			return;
+		}
+		this.getAudioInstance(src, "<preload>", is_music, false);
+	};
+	acts.SetPlaybackRate = function (tag, rate)
+	{
+		this.getAudioByTag(tag);
+		if (rate < 0.0)
+			rate = 0;
+		var i, len;
+		for (i = 0, len = taggedAudio.length; i < len; i++)
+			taggedAudio[i].setPlaybackRate(rate);
+	};
+	acts.Stop = function (tag)
+	{
+		this.getAudioByTag(tag);
+		var i, len;
+		for (i = 0, len = taggedAudio.length; i < len; i++)
+			taggedAudio[i].stop();
+	};
+	acts.SetSilent = function (s)
+	{
+		var i, len;
+		if (s === 2)					// toggling
+			s = (silent ? 1 : 0);		// choose opposite state
+		if (s === 0 && !silent)			// setting silent
+		{
+			for (i = 0, len = audioInstances.length; i < len; i++)
+				audioInstances[i].setMuted(true);
+			silent = true;
+		}
+		else if (s === 1 && silent)		// setting not silent
+		{
+			for (i = 0, len = audioInstances.length; i < len; i++)
+				audioInstances[i].setMuted(false);
+			silent = false;
+		}
+	};
+	pluginProto.exps = {};
+	var exps = pluginProto.exps;
+}());
+;
+;
+cr.plugins_.Button = function(runtime)
+{
+	this.runtime = runtime;
+};
+(function ()
+{
+	var pluginProto = cr.plugins_.Button.prototype;
+	pluginProto.Type = function(plugin)
+	{
+		this.plugin = plugin;
+		this.runtime = plugin.runtime;
+	};
+	var typeProto = pluginProto.Type.prototype;
+	typeProto.onCreate = function()
+	{
+	};
+	pluginProto.Instance = function(type)
+	{
+		this.type = type;
+		this.runtime = type.runtime;
+	};
+	var instanceProto = pluginProto.Instance.prototype;
+	instanceProto.onCreate = function()
+	{
+		if (this.runtime.isDomFree)
+			return;
+		this.elem = document.createElement("input");
+		this.elem.type = "button";
+		this.elem.id = this.properties[4];
+		jQuery(this.elem).appendTo(this.runtime.canvasdiv ? this.runtime.canvasdiv : "body");
+		this.elem.value = this.properties[0];
+		this.elem.title = this.properties[1];
+		this.elem.disabled = (this.properties[3] === 0);
+		if (this.properties[2] === 0)
+		{
+			jQuery(this.elem).hide();
+			this.visible = false;
+		}
+		this.elem.onclick = (function (self) {
+			return function(e) {
+				e.stopPropagation();
+				self.runtime.trigger(cr.plugins_.Button.prototype.cnds.OnClicked, self);
+			};
+		})(this);
+		this.elem.addEventListener("touchstart", function (e) {
+			e.stopPropagation();
+		}, false);
+		this.elem.addEventListener("touchmove", function (e) {
+			e.stopPropagation();
+		}, false);
+		this.elem.addEventListener("touchend", function (e) {
+			e.stopPropagation();
+		}, false);
+		jQuery(this.elem).mousedown(function (e) {
+			e.stopPropagation();
+		});
+		jQuery(this.elem).mouseup(function (e) {
+			e.stopPropagation();
+		});
+		jQuery(this.elem).keydown(function (e) {
+			e.stopPropagation();
+		});
+		jQuery(this.elem).keyup(function (e) {
+			e.stopPropagation();
+		});
+		this.updatePosition();
+		this.runtime.tickMe(this);
+	};
+	instanceProto.onDestroy = function ()
+	{
+		if (this.runtime.isDomFree)
+			return;
+		jQuery(this.elem).remove();
+		this.elem = null;
+	};
+	instanceProto.tick = function ()
+	{
+		this.updatePosition();
+	};
+	instanceProto.updatePosition = function ()
+	{
+		if (this.runtime.isDomFree)
+			return;
+		var left = this.layer.layerToCanvas(this.x, this.y, true);
+		var top = this.layer.layerToCanvas(this.x, this.y, false);
+		var right = this.layer.layerToCanvas(this.x + this.width, this.y + this.height, true);
+		var bottom = this.layer.layerToCanvas(this.x + this.width, this.y + this.height, false);
+		if (!this.visible || !this.layer.visible || right <= 0 || bottom <= 0 || left >= this.runtime.width || top >= this.runtime.height)
+		{
+			jQuery(this.elem).hide();
+			return;
+		}
+		if (left < 1)
+			left = 1;
+		if (top < 1)
+			top = 1;
+		if (right >= this.runtime.width)
+			right = this.runtime.width - 1;
+		if (bottom >= this.runtime.height)
+			bottom = this.runtime.height - 1;
+		jQuery(this.elem).show();
+		var offx = left + jQuery(this.runtime.canvas).offset().left;
+		var offy = top + jQuery(this.runtime.canvas).offset().top;
+		jQuery(this.elem).offset({left: offx, top: offy});
+		jQuery(this.elem).width(right - left);
+		jQuery(this.elem).height(bottom - top);
+		jQuery(this.elem).css("font-size", (this.layer.getScale() - 0.2) + "em");
+	};
+	instanceProto.draw = function(ctx)
+	{
+	};
+	instanceProto.drawGL = function(glw)
+	{
+	};
+	pluginProto.cnds = {};
+	var cnds = pluginProto.cnds;
+	cnds.OnClicked = function ()
+	{
+		return true;
+	};
+	pluginProto.acts = {};
+	var acts = pluginProto.acts;
+	acts.SetText = function (text)
+	{
+		if (this.runtime.isDomFree)
+			return;
+		this.elem.value = text;
+	};
+	acts.SetTooltip = function (text)
+	{
+		if (this.runtime.isDomFree)
+			return;
+		this.elem.title = text;
+	};
+	acts.SetVisible = function (vis)
+	{
+		if (this.runtime.isDomFree)
+			return;
+		this.visible = (vis !== 0);
+	};
+	acts.SetEnabled = function (en)
+	{
+		if (this.runtime.isDomFree)
+			return;
+		this.elem.disabled = (en === 0);
+	};
+	acts.SetFocus = function ()
+	{
+		if (this.runtime.isDomFree)
+			return;
+		this.elem.focus();
+	};
+	acts.SetCSSStyle = function (p, v)
+	{
+		if (this.runtime.isDomFree)
+			return;
+		jQuery(this.elem).css(p, v);
+	};
+	pluginProto.exps = {};
+	var exps = pluginProto.exps;
+}());
+;
+;
+cr.plugins_.Keyboard = function(runtime)
+{
+	this.runtime = runtime;
+};
+(function ()
+{
+	var pluginProto = cr.plugins_.Keyboard.prototype;
+	pluginProto.Type = function(plugin)
+	{
+		this.plugin = plugin;
+		this.runtime = plugin.runtime;
+	};
+	var typeProto = pluginProto.Type.prototype;
+	typeProto.onCreate = function()
+	{
+	};
+	pluginProto.Instance = function(type)
+	{
+		this.type = type;
+		this.runtime = type.runtime;
+		this.keyMap = new Array(256);	// stores key up/down state
+		this.usedKeys = new Array(256);
+		this.triggerKey = 0;
+		this.eventRan = false;
+	};
+	var instanceProto = pluginProto.Instance.prototype;
+	instanceProto.onCreate = function()
+	{
+		if (!this.runtime.isDomFree)
+		{
+			jQuery(document).keydown(
+				(function (self) {
+					return function(info) {
+						self.onKeyDown(info);
+					};
+				})(this)
+			);
+			jQuery(document).keyup(
+				(function (self) {
+					return function(info) {
+						self.onKeyUp(info);
+					};
+				})(this)
+			);
+		}
+	};
+	instanceProto.onKeyDown = function (info)
+	{
+		if (this.keyMap[info.which])
+		{
+			if (this.usedKeys[info.which])
+				info.preventDefault();
+			return;
+		}
+		this.keyMap[info.which] = true;
+		this.eventRan = this.runtime.trigger(cr.plugins_.Keyboard.prototype.cnds.OnAnyKey, this);
+		this.triggerKey = info.which;
+		this.runtime.trigger(cr.plugins_.Keyboard.prototype.cnds.OnKey, this);
+		if (this.eventRan)
+		{
+			this.usedKeys[info.which] = true;
+			info.preventDefault();
+		}
+	};
+	instanceProto.onKeyUp = function (info)
+	{
+		this.keyMap[info.which] = false;
+		this.triggerKey = info.which;
+		this.eventRan = false;
+		this.runtime.trigger(cr.plugins_.Keyboard.prototype.cnds.OnKeyReleased, this);
+		if (this.eventRan || this.usedKeys[info.which])
+		{
+			this.usedKeys[info.which] = true;
+			info.preventDefault();
+		}
+	};
+	pluginProto.cnds = {};
+	var cnds = pluginProto.cnds;
+	cnds.IsKeyDown = function(key)
+	{
+		return this.keyMap[key];
+	};
+	cnds.OnKey = function(key)
+	{
+		var ret = (key === this.triggerKey);
+		this.eventRan = this.eventRan || ret;
+		return ret;
+	};
+	cnds.OnAnyKey = function(key)
+	{
+		return true;
+	};
+	cnds.OnKeyReleased = function(key)
+	{
+		var ret = (key === this.triggerKey);
+		this.eventRan = this.eventRan || ret;
+		return ret;
+	};
+}());
+;
+;
+cr.plugins_.Mouse = function(runtime)
+{
+	this.runtime = runtime;
+};
+(function ()
+{
+	var pluginProto = cr.plugins_.Mouse.prototype;
+	pluginProto.Type = function(plugin)
+	{
+		this.plugin = plugin;
+		this.runtime = plugin.runtime;
+	};
+	var typeProto = pluginProto.Type.prototype;
+	typeProto.onCreate = function()
+	{
+	};
+	pluginProto.Instance = function(type)
+	{
+		this.type = type;
+		this.runtime = type.runtime;
+		this.buttonMap = new Array(4);		// mouse down states
+		this.mouseXcanvas = 0;				// mouse position relative to canvas
+		this.mouseYcanvas = 0;
+		this.triggerButton = 0;
+		this.triggerType = 0;
+		this.triggerDir = 0;
+		this.handled = false;
+	};
+	var instanceProto = pluginProto.Instance.prototype;
+	instanceProto.onCreate = function()
+	{
+		if (!this.runtime.isDomFree)
+		{
+			jQuery(document).mousemove(
+				(function (self) {
+					return function(info) {
+						self.onMouseMove(info);
+					};
+				})(this)
+			);
+			jQuery(document).mousedown(
+				(function (self) {
+					return function(info) {
+						self.onMouseDown(info);
+					};
+				})(this)
+			);
+			jQuery(document).mouseup(
+				(function (self) {
+					return function(info) {
+						self.onMouseUp(info);
+					};
+				})(this)
+			);
+			jQuery(document).dblclick(
+				(function (self) {
+					return function(info) {
+						self.onDoubleClick(info);
+					};
+				})(this)
+			);
+			var wheelevent = (function (self) {
+								return function(info) {
+									self.onWheel(info);
+								};
+							})(this);
+			document.addEventListener("mousewheel", wheelevent, false);
+			document.addEventListener("DOMMouseScroll", wheelevent, false);
+		}
+	};
+	var dummyoffset = {left: 0, top: 0};
+	instanceProto.onMouseMove = function(info)
+	{
+		var offset = this.runtime.isDomFree ? dummyoffset : jQuery(this.runtime.canvas).offset();
+		this.mouseXcanvas = info.pageX - offset.left;
+		this.mouseYcanvas = info.pageY - offset.top;
+	};
+	instanceProto.mouseInGame = function ()
+	{
+		if (this.runtime.fullscreen_mode > 0)
+			return true;
+		return this.mouseXcanvas >= 0 && this.mouseYcanvas >= 0
+		    && this.mouseXcanvas < this.runtime.width && this.mouseYcanvas < this.runtime.height;
+	};
+	instanceProto.onMouseDown = function(info)
+	{
+		if (!this.mouseInGame())
+			return;
+		if (window == window.top)
+			info.preventDefault();
+		this.buttonMap[info.which] = true;
+		this.runtime.trigger(cr.plugins_.Mouse.prototype.cnds.OnAnyClick, this);
+		this.triggerButton = info.which - 1;	// 1-based
+		this.triggerType = 0;					// single click
+		this.runtime.trigger(cr.plugins_.Mouse.prototype.cnds.OnClick, this);
+		this.runtime.trigger(cr.plugins_.Mouse.prototype.cnds.OnObjectClicked, this);
+	};
+	instanceProto.onMouseUp = function(info)
+	{
+		if (!this.buttonMap[info.which])
+			return;
+		if (window == window.top)
+			info.preventDefault();
+		this.buttonMap[info.which] = false;
+		this.triggerButton = info.which - 1;	// 1-based
+		this.runtime.trigger(cr.plugins_.Mouse.prototype.cnds.OnRelease, this);
+	};
+	instanceProto.onDoubleClick = function(info)
+	{
+		if (!this.mouseInGame())
+			return;
+		info.preventDefault();
+		this.triggerButton = info.which - 1;	// 1-based
+		this.triggerType = 1;					// double click
+		this.runtime.trigger(cr.plugins_.Mouse.prototype.cnds.OnClick, this);
+		this.runtime.trigger(cr.plugins_.Mouse.prototype.cnds.OnObjectClicked, this);
+	};
+	instanceProto.onWheel = function (info)
+	{
+		var delta = info.wheelDelta ? info.wheelDelta : info.detail ? -info.detail : 0;
+		this.triggerDir = (delta < 0 ? 0 : 1);
+		this.handled = false;
+		this.runtime.trigger(cr.plugins_.Mouse.prototype.cnds.OnWheel, this);
+		if (this.handled)
+			info.preventDefault();
+	};
+	pluginProto.cnds = {};
+	var cnds = pluginProto.cnds;
+	cnds.OnClick = function (button, type)
+	{
+		return button === this.triggerButton && type === this.triggerType;
+	};
+	cnds.OnAnyClick = function ()
+	{
+		return true;
+	};
+	cnds.IsButtonDown = function (button)
+	{
+		return this.buttonMap[button + 1];	// jQuery uses 1-based buttons for some reason
+	};
+	cnds.OnRelease = function (button)
+	{
+		return button === this.triggerButton;
+	};
+	cnds.IsOverObject = function (obj)
+	{
+		var cnd = this.runtime.getCurrentCondition();
+		if (cr.is_undefined(cnd.extra.mouseOverInverted))
+		{
+			cnd.extra.mouseOverInverted = cnd.inverted;
+			cnd.inverted = false;
+		}
+		var mx = this.mouseXcanvas;
+		var my = this.mouseYcanvas;
+		return this.runtime.testAndSelectCanvasPointOverlap(obj, mx, my, cnd.extra.mouseOverInverted);
+	};
+	cnds.OnObjectClicked = function (button, type, obj)
+	{
+		if (button !== this.triggerButton || type !== this.triggerType)
+			return false;	// wrong click type
+		return this.runtime.testAndSelectCanvasPointOverlap(obj, this.mouseXcanvas, this.mouseYcanvas, false);
+	};
+	cnds.OnWheel = function (dir)
+	{
+		this.handled = true;
+		return dir === this.triggerDir;
+	};
+	pluginProto.acts = {};
+	var acts = pluginProto.acts;
+	acts.SetCursor = function (c)
+	{
+		var cursor_style = ["auto", "pointer", "text", "crosshair", "move", "help", "wait", "none"][c];
+		this.runtime.canvas.style.cursor = cursor_style;
+		if (this.runtime.overlay_canvas)
+			this.runtime.overlay_canvas.style.cursor = cursor_style;
+	};
+	pluginProto.exps = {};
+	var exps = pluginProto.exps;
+	exps.X = function (ret, layerparam)
+	{
+		var layer, oldScale, oldZoomRate, oldParallaxX, oldAngle;
+		if (cr.is_undefined(layerparam))
+		{
+			layer = this.runtime.getLayerByNumber(0);
+			oldScale = layer.scale;
+			oldZoomRate = layer.zoomRate;
+			oldParallaxX = layer.parallaxX;
+			oldAngle = layer.angle;
+			layer.scale = this.runtime.running_layout.scale;
+			layer.zoomRate = 1.0;
+			layer.parallaxX = 1.0;
+			layer.angle = this.runtime.running_layout.angle;
+			ret.set_float(layer.canvasToLayer(this.mouseXcanvas, this.mouseYcanvas, true));
+			layer.scale = oldScale;
+			layer.zoomRate = oldZoomRate;
+			layer.parallaxX = oldParallaxX;
+			layer.angle = oldAngle;
+		}
+		else
+		{
+			if (cr.is_number(layerparam))
+				layer = this.runtime.getLayerByNumber(layerparam);
+			else
+				layer = this.runtime.getLayerByName(layerparam);
+			if (layer)
+				ret.set_float(layer.canvasToLayer(this.mouseXcanvas, this.mouseYcanvas, true));
+			else
+				ret.set_float(0);
+		}
+	};
+	exps.Y = function (ret, layerparam)
+	{
+		var layer, oldScale, oldZoomRate, oldParallaxY, oldAngle;
+		if (cr.is_undefined(layerparam))
+		{
+			layer = this.runtime.getLayerByNumber(0);
+			oldScale = layer.scale;
+			oldZoomRate = layer.zoomRate;
+			oldParallaxY = layer.parallaxY;
+			oldAngle = layer.angle;
+			layer.scale = this.runtime.running_layout.scale;
+			layer.zoomRate = 1.0;
+			layer.parallaxY = 1.0;
+			layer.angle = this.runtime.running_layout.angle;
+			ret.set_float(layer.canvasToLayer(this.mouseXcanvas, this.mouseYcanvas, false));
+			layer.scale = oldScale;
+			layer.zoomRate = oldZoomRate;
+			layer.parallaxY = oldParallaxY;
+			layer.angle = oldAngle;
+		}
+		else
+		{
+			if (cr.is_number(layerparam))
+				layer = this.runtime.getLayerByNumber(layerparam);
+			else
+				layer = this.runtime.getLayerByName(layerparam);
+			if (layer)
+				ret.set_float(layer.canvasToLayer(this.mouseXcanvas, this.mouseYcanvas, false));
+			else
+				ret.set_float(0);
+		}
+	};
+	exps.AbsoluteX = function (ret)
+	{
+		ret.set_float(this.mouseXcanvas);
+	};
+	exps.AbsoluteY = function (ret)
+	{
+		ret.set_float(this.mouseYcanvas);
 	};
 }());
 ;
@@ -9696,6 +10903,240 @@ cr.plugins_.Text = function(runtime)
 }());
 ;
 ;
+cr.plugins_.TextBox = function(runtime)
+{
+	this.runtime = runtime;
+};
+(function ()
+{
+	var pluginProto = cr.plugins_.TextBox.prototype;
+	pluginProto.Type = function(plugin)
+	{
+		this.plugin = plugin;
+		this.runtime = plugin.runtime;
+	};
+	var typeProto = pluginProto.Type.prototype;
+	typeProto.onCreate = function()
+	{
+	};
+	pluginProto.Instance = function(type)
+	{
+		this.type = type;
+		this.runtime = type.runtime;
+	};
+	var instanceProto = pluginProto.Instance.prototype;
+	var elemTypes = ["text", "password", "email", "number", "tel", "url"];
+	if (navigator.userAgent.indexOf("MSIE 9") > -1)
+	{
+		elemTypes[2] = "text";
+		elemTypes[3] = "text";
+		elemTypes[4] = "text";
+		elemTypes[5] = "text";
+	}
+	instanceProto.onCreate = function()
+	{
+		if (this.runtime.isDomFree)
+			return;
+		if (this.properties[7] === 6)	// textarea
+		{
+			this.elem = document.createElement("textarea");
+			jQuery(this.elem).css("resize", "none");
+		}
+		else
+		{
+			this.elem = document.createElement("input");
+			this.elem.type = elemTypes[this.properties[7]];
+		}
+		this.elem.id = this.properties[8];
+		jQuery(this.elem).appendTo(this.runtime.canvasdiv ? this.runtime.canvasdiv : "body");
+		this.elem["autocomplete"] = "off";
+		this.elem.value = this.properties[0];
+		this.elem["placeholder"] = this.properties[1];
+		this.elem.title = this.properties[2];
+		this.elem.disabled = (this.properties[4] === 0);
+		this.elem["readOnly"] = (this.properties[5] === 1);
+		this.elem["spellcheck"] = (this.properties[6] === 1);
+		if (this.properties[3] === 0)
+		{
+			jQuery(this.elem).hide();
+			this.visible = false;
+		}
+		var onchangetrigger = (function (self) {
+			return function() {
+				self.runtime.trigger(cr.plugins_.TextBox.prototype.cnds.OnTextChanged, self);
+			};
+		})(this);
+		this.elem["oninput"] = onchangetrigger;
+		if (navigator.userAgent.indexOf("MSIE") !== -1)
+			this.elem["oncut"] = onchangetrigger;
+		this.elem.onclick = (function (self) {
+			return function(e) {
+				e.stopPropagation();
+				self.runtime.trigger(cr.plugins_.TextBox.prototype.cnds.OnClicked, self);
+			};
+		})(this);
+		this.elem.ondblclick = (function (self) {
+			return function(e) {
+				e.stopPropagation();
+				self.runtime.trigger(cr.plugins_.TextBox.prototype.cnds.OnDoubleClicked, self);
+			};
+		})(this);
+		this.elem.addEventListener("touchstart", function (e) {
+			e.stopPropagation();
+		}, false);
+		this.elem.addEventListener("touchmove", function (e) {
+			e.stopPropagation();
+		}, false);
+		this.elem.addEventListener("touchend", function (e) {
+			e.stopPropagation();
+		}, false);
+		jQuery(this.elem).mousedown(function (e) {
+			e.stopPropagation();
+		});
+		jQuery(this.elem).mouseup(function (e) {
+			e.stopPropagation();
+		});
+		jQuery(this.elem).keydown(function (e) {
+			if (e.which !== 13 && e.which != 27)	// allow enter and escape
+				e.stopPropagation();
+		});
+		jQuery(this.elem).keyup(function (e) {
+			if (e.which !== 13 && e.which != 27)	// allow enter and escape
+				e.stopPropagation();
+		});
+		this.updatePosition();
+		this.runtime.tickMe(this);
+	};
+	instanceProto.onDestroy = function ()
+	{
+		if (this.runtime.isDomFree)
+				return;
+		jQuery(this.elem).remove();
+		this.elem = null;
+	};
+	instanceProto.tick = function ()
+	{
+		this.updatePosition();
+	};
+	instanceProto.updatePosition = function ()
+	{
+		if (this.runtime.isDomFree)
+			return;
+		var left = this.layer.layerToCanvas(this.x, this.y, true);
+		var top = this.layer.layerToCanvas(this.x, this.y, false);
+		var right = this.layer.layerToCanvas(this.x + this.width, this.y + this.height, true);
+		var bottom = this.layer.layerToCanvas(this.x + this.width, this.y + this.height, false);
+		if (!this.visible || !this.layer.visible || right <= 0 || bottom <= 0 || left >= this.runtime.width || top >= this.runtime.height)
+		{
+			jQuery(this.elem).hide();
+			return;
+		}
+		if (left < 1)
+			left = 1;
+		if (top < 1)
+			top = 1;
+		if (right >= this.runtime.width)
+			right = this.runtime.width - 1;
+		if (bottom >= this.runtime.height)
+			bottom = this.runtime.height - 1;
+		jQuery(this.elem).show();
+		var offx = left + jQuery(this.runtime.canvas).offset().left;
+		var offy = top + jQuery(this.runtime.canvas).offset().top;
+		jQuery(this.elem).offset({left: offx, top: offy});
+		jQuery(this.elem).width(right - left);
+		jQuery(this.elem).height(bottom - top);
+		jQuery(this.elem).css("font-size", (this.layer.getScale() - 0.2) + "em");
+	};
+	instanceProto.draw = function(ctx)
+	{
+	};
+	instanceProto.drawGL = function(glw)
+	{
+	};
+	pluginProto.cnds = {};
+	var cnds = pluginProto.cnds;
+	cnds.CompareText = function (text, case_)
+	{
+		if (this.runtime.isDomFree)
+			return false;
+		if (case_ === 0)	// insensitive
+			return this.elem.value.toLowerCase() === text.toLowerCase();
+		else
+			return this.elem.value === text;
+	};
+	cnds.OnTextChanged = function ()
+	{
+		return true;
+	};
+	cnds.OnClicked = function ()
+	{
+		return true;
+	};
+	cnds.OnDoubleClicked = function ()
+	{
+		return true;
+	};
+	pluginProto.acts = {};
+	var acts = pluginProto.acts;
+	acts.SetText = function (text)
+	{
+		if (this.runtime.isDomFree)
+			return;
+		this.elem.value = text;
+	};
+	acts.SetPlaceholder = function (text)
+	{
+		if (this.runtime.isDomFree)
+			return;
+		this.elem.placeholder = text;
+	};
+	acts.SetTooltip = function (text)
+	{
+		if (this.runtime.isDomFree)
+			return;
+		this.elem.title = text;
+	};
+	acts.SetVisible = function (vis)
+	{
+		if (this.runtime.isDomFree)
+			return;
+		this.visible = (vis !== 0);
+	};
+	acts.SetEnabled = function (en)
+	{
+		if (this.runtime.isDomFree)
+			return;
+		this.elem.disabled = (en === 0);
+	};
+	acts.SetReadOnly = function (ro)
+	{
+		if (this.runtime.isDomFree)
+			return;
+		this.elem.readOnly = (ro === 0);
+	};
+	acts.SetFocus = function ()
+	{
+		if (this.runtime.isDomFree)
+			return;
+		this.elem.focus();
+	};
+	acts.SetCSSStyle = function (p, v)
+	{
+		if (this.runtime.isDomFree)
+			return;
+		jQuery(this.elem).css(p, v);
+	};
+	pluginProto.exps = {};
+	var exps = pluginProto.exps;
+	exps.Text = function (ret)
+	{
+		if (this.runtime.isDomFree)
+			ret.set_string("");
+		ret.set_string(this.elem.value);
+	};
+}());
+;
+;
 cr.plugins_.WebStorage = function(runtime)
 {
 	this.runtime = runtime;
@@ -10487,6 +11928,1296 @@ cr.behaviors.Flash = function(runtime)
 }());
 ;
 ;
+<<<<<<< HEAD:web-app/labyrinth/c2runtime.js
+cr.behaviors.Pin = function(runtime)
+=======
+cr.plugins_.Text = function(runtime)
+>>>>>>> origin/master:web-app/labyrinth/c2runtime.js
+{
+	this.runtime = runtime;
+};
+(function ()
+{
+<<<<<<< HEAD:web-app/labyrinth/c2runtime.js
+	var behaviorProto = cr.behaviors.Pin.prototype;
+	behaviorProto.Type = function(behavior, objtype)
+=======
+	var pluginProto = cr.plugins_.Text.prototype;
+	pluginProto.onCreate = function ()
+	{
+		pluginProto.acts.SetWidth = function (w)
+		{
+			if (this.width !== w)
+			{
+				this.width = w;
+				this.text_changed = true;	// also recalculate text wrapping
+				this.set_bbox_changed();
+			}
+		};
+	};
+	pluginProto.Type = function(plugin)
+>>>>>>> origin/master:web-app/labyrinth/c2runtime.js
+	{
+		this.behavior = behavior;
+		this.objtype = objtype;
+		this.runtime = behavior.runtime;
+	};
+	var behtypeProto = behaviorProto.Type.prototype;
+	behtypeProto.onCreate = function()
+	{
+	};
+	behaviorProto.Instance = function(type, inst)
+	{
+		this.type = type;
+		this.behavior = type.behavior;
+		this.inst = inst;				// associated object instance to modify
+		this.runtime = type.runtime;
+		this.lines = [];		// for word wrapping
+		this.text_changed = true;
+	};
+<<<<<<< HEAD:web-app/labyrinth/c2runtime.js
+	var behinstProto = behaviorProto.Instance.prototype;
+	behinstProto.onCreate = function()
+	{
+		this.pinObject = null;
+		this.pinAngle = 0;
+		this.pinDist = 0;
+		this.myStartAngle = 0;
+		this.theirStartAngle = 0;
+		this.lastKnownAngle = 0;
+		this.mode = 0;				// 0 = position & angle; 1 = position; 2 = angle; 3 = rope; 4 = bar
+		this.myDestroyCallback = (function (self) {
+											return function(inst) {
+												self.onInstanceDestroyed(inst);
+											};
+										})(this);
+		this.runtime.addDestroyCallback(this.myDestroyCallback);
+	};
+	behinstProto.onInstanceDestroyed = function (inst)
+	{
+		if (this.pinObject == inst)
+			this.pinObject = null;
+	};
+	behinstProto.onDestroy = function()
+	{
+		this.pinObject = null;
+		this.runtime.removeDestroyCallback(this.myDestroyCallback);
+	};
+	behinstProto.tick = function ()
+	{
+	};
+	behinstProto.tick2 = function ()
+	{
+		if (!this.pinObject)
+			return;
+		if (this.lastKnownAngle !== this.inst.angle)
+			this.myStartAngle = cr.clamp_angle(this.myStartAngle + (this.inst.angle - this.lastKnownAngle));
+		var newx = this.inst.x;
+		var newy = this.inst.y;
+		if (this.mode === 3 || this.mode === 4)		// rope mode or bar mode
+		{
+			var dist = cr.distanceTo(this.inst.x, this.inst.y, this.pinObject.x, this.pinObject.y);
+			if ((dist > this.pinDist) || (this.mode === 4 && dist < this.pinDist))
+			{
+				var a = cr.angleTo(this.pinObject.x, this.pinObject.y, this.inst.x, this.inst.y);
+				newx = this.pinObject.x + Math.cos(a) * this.pinDist;
+				newy = this.pinObject.y + Math.sin(a) * this.pinDist;
+=======
+	var instanceProto = pluginProto.Instance.prototype;
+	var requestedWebFonts = {};		// already requested web fonts have an entry here
+	var isDirectCanvas = false;
+	instanceProto.onCreate = function()
+	{
+		isDirectCanvas = this.runtime.isDirectCanvas;
+		this.text = this.properties[0];
+		this.visible = (this.properties[1] === 0);		// 0=visible, 1=invisible
+		this.font = this.properties[2];
+		this.color = this.properties[3];
+		this.halign = this.properties[4];				// 0=left, 1=center, 2=right
+		this.wrapbyword = (this.properties[6] === 0);	// 0=word, 1=character
+		this.lastwidth = this.width;
+		this.facename = "";
+		this.fontstyle = "";
+		var arr = this.font.split(" ");
+		this.ptSize = 0;
+		this.textWidth = 0;
+		this.textHeight = 0;
+		var i;
+		for (i = 0; i < arr.length; i++)
+		{
+			if (arr[i].substr(arr[i].length - 2, 2) === "pt")
+			{
+				this.ptSize = parseInt(arr[i].substr(0, arr[i].length - 2));
+				this.pxHeight = Math.ceil((this.ptSize / 72.0) * 96.0) + 4;	// assume 96dpi...
+				this.facename = arr[i + 1];
+				if (i > 0)
+					this.fontstyle = arr[i - 1];
+				break;
+			}
+		}
+;
+	};
+	instanceProto.updateFont = function ()
+	{
+		this.font = this.fontstyle + " " + this.ptSize.toString() + "pt " + this.facename;
+		this.text_changed = true;
+		this.runtime.redraw = true;
+	};
+	instanceProto.draw = function(ctx)
+	{
+		if (isDirectCanvas)
+			return;
+		ctx.font = this.font;
+		ctx.textBaseline = "top";
+		ctx.fillStyle = this.color;
+		ctx.globalAlpha = this.opacity;
+		ctx.globalCompositeOperation = "source-over";
+		if (this.text_changed || this.width !== this.lastwidth)
+		{
+			this.type.plugin.WordWrap(this.text, this.lines, ctx, this.width, this.wrapbyword);
+			this.text_changed = false;
+			this.lastwidth = this.width;
+		}
+		this.update_bbox();
+		var penX = this.bquad.tlx;
+		var penY = this.bquad.tly;
+		if (this.runtime.pixel_rounding)
+		{
+			penX = (penX + 0.5) | 0;
+			penY = (penY + 0.5) | 0;
+		}
+		if (this.angle !== 0)
+		{
+			ctx.save();
+			ctx.translate(penX, penY);
+			ctx.rotate(this.angle);
+			penX = 0;
+			penY = 0;
+		}
+		var endY = penY + this.height;
+		var line_height = this.pxHeight;
+		var drawX;
+		var i;
+		for (i = 0; i < this.lines.length; i++)
+		{
+			drawX = penX;
+			if (!isDirectCanvas)
+			{
+				if (this.halign === 1)		// center
+					drawX = penX + (this.width - this.lines[i].width) / 2;
+				else if (this.halign === 2)	// right
+					drawX = penX + (this.width - this.lines[i].width);
+			}
+			ctx.fillText(this.lines[i].text, drawX, penY);
+			penY += line_height;
+			if (penY >= endY - line_height)
+				break;
+		}
+		if (this.angle !== 0)
+			ctx.restore();
+	};
+	instanceProto.drawGL = function(glw)
+	{
+		var oldopacity = this.opacity;
+		this.opacity *= this.layer.opacity;
+		if (this.runtime.overlay_ctx)
+			this.draw(this.runtime.overlay_ctx);
+		this.opacity = oldopacity;
+	};
+	var wordsCache = [];
+	pluginProto.TokeniseWords = function (text)
+	{
+		wordsCache.length = 0;
+		var cur_word = "";
+		var ch;
+		var i = 0;
+		while (i < text.length)
+		{
+			ch = text.charAt(i);
+			if (ch === "\n")
+			{
+				if (cur_word.length)
+				{
+					wordsCache.push(cur_word);
+					cur_word = "";
+				}
+				wordsCache.push("\n");
+				++i;
+			}
+			else if (ch === " " || ch === "\t" || ch === "-")
+			{
+				do {
+					cur_word += text.charAt(i);
+					i++;
+				}
+				while (i < text.length && (text.charAt(i) === " " || text.charAt(i) === "\t"));
+				wordsCache.push(cur_word);
+				cur_word = "";
+			}
+			else if (i < text.length)
+			{
+				cur_word += ch;
+				i++;
+			}
+		}
+		if (cur_word.length)
+			wordsCache.push(cur_word);
+	};
+	pluginProto.WordWrap = function (text, lines, ctx, width, wrapbyword)
+	{
+		if (!text || !text.length)
+		{
+			lines.length = 0;
+			return;
+		}
+		if (width <= 2.0)
+		{
+			lines.length = 0;
+			return;
+		}
+		if (text.length <= 100 && text.indexOf("\n") === -1)
+		{
+			var all_width = 0;
+			if (!isDirectCanvas)
+				all_width = ctx.measureText(text).width;
+			if (all_width <= width)
+			{
+				if (lines.length)
+					lines.length = 1;
+				else
+					lines.push({});
+				lines[0].text = text;
+				lines[0].width = all_width;
+				return;
+>>>>>>> origin/master:web-app/labyrinth/c2runtime.js
+			}
+		}
+		this.WrapText(text, lines, ctx, width, wrapbyword);
+	};
+	pluginProto.WrapText = function (text, lines, ctx, width, wrapbyword)
+	{
+		var wordArray;
+		if (wrapbyword)
+		{
+			this.TokeniseWords(text);	// writes to wordsCache
+			wordArray = wordsCache;
+		}
+		else
+			wordArray = text;
+		var cur_line = "";
+		var prev_line;
+		var line_width;
+		var i;
+		var lineIndex = 0;
+		var line;
+		for (i = 0; i < wordArray.length; i++)
+		{
+			if (wordArray[i] === "\n")
+			{
+				if (lineIndex >= lines.length)
+					lines.push({});
+				line = lines[lineIndex];
+				line.text = cur_line;
+				line.width = 0;
+				if (!isDirectCanvas)		// no measureText in DC yet
+					line.width = ctx.measureText(cur_line).width;
+				lineIndex++;
+				cur_line = "";
+				continue;
+			}
+			prev_line = cur_line;
+			cur_line += wordArray[i];
+			line_width = 0;
+			if (!isDirectCanvas)
+				line_width = ctx.measureText(cur_line).width;
+			if (line_width >= width)
+			{
+				if (lineIndex >= lines.length)
+					lines.push({});
+				line = lines[lineIndex];
+				line.text = prev_line;
+				line.width = 0;
+				if (!isDirectCanvas)		// no measureText in DC yet
+					line.width = ctx.measureText(prev_line).width;
+				lineIndex++;
+				cur_line = wordArray[i];
+				if (!wrapbyword && cur_line === " ")
+					cur_line = "";
+			}
+		}
+		if (cur_line.length)
+		{
+			if (lineIndex >= lines.length)
+				lines.push({});
+			line = lines[lineIndex];
+			line.text = cur_line;
+			line.width = 0;
+			if (!isDirectCanvas)		// no measureText in DC yet
+				line.width = ctx.measureText(cur_line).width;
+			lineIndex++;
+		}
+		lines.length = lineIndex;
+	};
+	pluginProto.cnds = {};
+	var cnds = pluginProto.cnds;
+	cnds.CompareText = function(text_to_compare, case_sensitive)
+	{
+		if (case_sensitive)
+			return this.text == text_to_compare;
+		else
+			return this.text.toLowerCase() == text_to_compare.toLowerCase();
+	};
+	pluginProto.acts = {};
+	var acts = pluginProto.acts;
+	acts.SetText = function(param)
+	{
+		if (cr.is_number(param) && param < 1e9)
+			param = Math.round(param * 1e10) / 1e10;	// round to nearest ten billionth - hides floating point errors
+		var text_to_set = param.toString();
+		if (this.text !== text_to_set)
+		{
+			this.text = text_to_set;
+			this.text_changed = true;
+			this.runtime.redraw = true;
+		}
+	};
+	acts.AppendText = function(param)
+	{
+		if (cr.is_number(param))
+			param = Math.round(param * 1e10) / 1e10;	// round to nearest ten billionth - hides floating point errors
+		var text_to_append = param.toString();
+		if (text_to_append)	// not empty
+		{
+			this.text += text_to_append;
+			this.text_changed = true;
+			this.runtime.redraw = true;
+		}
+	};
+	acts.SetFontFace = function (face_, style_)
+	{
+		var newstyle = "";
+		switch (style_) {
+		case 1: newstyle = "bold"; break;
+		case 2: newstyle = "italic"; break;
+		case 3: newstyle = "bold italic"; break;
+		}
+		if (face_ === this.facename && newstyle === this.fontstyle)
+			return;		// no change
+		this.facename = face_;
+		this.fontstyle = newstyle;
+		this.updateFont();
+	};
+	acts.SetFontSize = function (size_)
+	{
+		if (this.ptSize === size_)
+			return;
+		this.ptSize = size_;
+		this.pxHeight = Math.ceil((this.ptSize / 72.0) * 96.0) + 4;	// assume 96dpi...
+		this.updateFont();
+	};
+	acts.SetFontColor = function (rgb)
+	{
+		var newcolor = "rgb(" + cr.GetRValue(rgb).toString() + "," + cr.GetGValue(rgb).toString() + "," + cr.GetBValue(rgb).toString() + ")";
+		if (newcolor === this.color)
+			return;
+		this.color = newcolor;
+		this.runtime.redraw = true;
+	};
+	acts.SetWebFont = function (familyname_, cssurl_)
+	{
+		if (this.runtime.isDirectCanvas)
+			return;		// DC todo
+		if (requestedWebFonts.hasOwnProperty(cssurl_))
+		{
+			var newfacename = "'" + familyname_ + "'";
+			if (this.facename === newfacename)
+				return;	// no change
+			this.facename = newfacename;
+			this.updateFont();
+			return;
+		}
+		var wf = document.createElement("link");
+		wf.href = cssurl_;
+		wf.rel = "stylesheet";
+		wf.type = "text/css";
+		var refreshFunc = (function (self) {
+						return function () {
+							self.runtime.redraw = true;
+							self.text_changed = true;
+						}
+					})(this);
+		wf.onload = refreshFunc;
+		for (var i = 1; i < 10; i++)
+		{
+			setTimeout(refreshFunc, i * 100);
+			setTimeout(refreshFunc, i * 1000);
+		}
+		document.getElementsByTagName('head')[0].appendChild(wf);
+		requestedWebFonts[cssurl_] = true;
+		this.facename = "'" + familyname_ + "'";
+		this.updateFont();
+;
+	};
+	pluginProto.exps = {};
+	var exps = pluginProto.exps;
+	exps.Text = function(ret)
+	{
+		ret.set_string(this.text);
+	};
+	exps.FaceName = function (ret)
+	{
+		ret.set_string(this.facename);
+	};
+	exps.FaceSize = function (ret)
+	{
+		ret.set_int(this.ptSize);
+	};
+	exps.TextWidth = function (ret)
+	{
+		var w = 0;
+		var i, len, x;
+		for (i = 0, len = this.lines.length; i < len; i++)
+		{
+			x = this.lines[i].width;
+			if (w < x)
+				w = x;
+		}
+		ret.set_int(w);
+	};
+	exps.TextHeight = function (ret)
+	{
+		ret.set_int(this.lines.length * this.pxHeight);
+	};
+}());
+;
+;
+cr.plugins_.WebStorage = function(runtime)
+{
+	this.runtime = runtime;
+};
+(function()
+{
+	var pluginProto = cr.plugins_.WebStorage.prototype;
+	pluginProto.Type = function(plugin)
+	{
+		this.plugin = plugin;
+		this.runtime = plugin.runtime;
+	};
+	var typeProto = pluginProto.Type.prototype;
+	typeProto.onCreate = function()
+	{
+	};
+	pluginProto.Instance = function(type)
+	{
+		this.type = type;
+		this.runtime = type.runtime;
+	};
+	var instanceProto = pluginProto.Instance.prototype;
+	var prefix = "";
+	var is_arcade = (typeof window["is_scirra_arcade"] !== "undefined");
+	if (is_arcade)
+		prefix = "arcade" + window["scirra_arcade_id"];
+	instanceProto.onCreate = function()
+	{
+	};
+	pluginProto.cnds = {};
+	var cnds = pluginProto.cnds;
+	cnds.LocalStorageEnabled = function()
+	{
+		return true;
+	};
+	cnds.SessionStorageEnabled = function()
+	{
+		return true;
+	};
+	cnds.LocalStorageExists = function(key)
+	{
+		return localStorage.getItem(prefix + key) != null;
+	};
+	cnds.SessionStorageExists = function(key)
+	{
+		return sessionStorage.getItem(prefix + key) != null;
+	};
+	cnds.OnQuotaExceeded = function ()
+	{
+		return true;
+	};
+	pluginProto.acts = {};
+	var acts = pluginProto.acts;
+	acts.StoreLocal = function(key, data)
+	{
+		try {
+			localStorage.setItem(prefix + key, data);
+		}
+		catch (e)
+		{
+			this.runtime.trigger(cr.plugins_.WebStorage.prototype.cnds.OnQuotaExceeded, this);
+		}
+	};
+	acts.StoreSession = function(key,data)
+	{
+		try {
+			sessionStorage.setItem(prefix + key, data);
+		}
+		catch (e)
+		{
+			this.runtime.trigger(cr.plugins_.WebStorage.prototype.cnds.OnQuotaExceeded, this);
+		}
+	};
+	acts.RemoveLocal = function(key)
+	{
+		localStorage.removeItem(prefix + key);
+	};
+	acts.RemoveSession = function(key)
+	{
+		sessionStorage.removeItem(prefix + key);
+	};
+	acts.ClearLocal = function()
+	{
+		if (!is_arcade)
+			localStorage.clear();
+	};
+	acts.ClearSession = function()
+	{
+		if (!is_arcade)
+			sessionStorage.clear();
+	};
+	acts.JSONLoad = function (json_, mode_)
+	{
+		var d;
+		try {
+			d = JSON.parse(json_);
+		}
+		catch(e) { return; }
+		if (!d["c2dictionary"])			// presumably not a c2dictionary object
+			return;
+		var o = d["data"];
+		if (mode_ === 0 && !is_arcade)	// 'set' mode: must clear webstorage first
+			localStorage.clear();
+		var p;
+		for (p in o)
+		{
+<<<<<<< HEAD:web-app/labyrinth/c2runtime.js
+			newx = this.pinObject.x + Math.cos(this.pinObject.angle + this.pinAngle) * this.pinDist;
+			newy = this.pinObject.y + Math.sin(this.pinObject.angle + this.pinAngle) * this.pinDist;
+		}
+		var newangle = cr.clamp_angle(this.myStartAngle + (this.pinObject.angle - this.theirStartAngle));
+		this.lastKnownAngle = newangle;
+		if ((this.mode === 0 || this.mode === 1 || this.mode === 3 || this.mode === 4)
+			&& (this.inst.x !== newx || this.inst.y !== newy))
+		{
+			this.inst.x = newx;
+			this.inst.y = newy;
+			this.inst.set_bbox_changed();
+		}
+		if ((this.mode === 0 || this.mode === 2) && (this.inst.angle !== newangle))
+		{
+			this.inst.angle = newangle;
+			this.inst.set_bbox_changed();
+		}
+	};
+	behaviorProto.cnds = {};
+	var cnds = behaviorProto.cnds;
+	cnds.IsPinned = function ()
+	{
+		return !!this.pinObject;
+	};
+	behaviorProto.acts = {};
+	var acts = behaviorProto.acts;
+	acts.Pin = function (obj, mode_)
+	{
+		if (!obj)
+			return;
+		var otherinst = obj.getFirstPicked();
+		if (!otherinst)
+			return;
+		this.pinObject = otherinst;
+		this.pinAngle = cr.angleTo(otherinst.x, otherinst.y, this.inst.x, this.inst.y) - otherinst.angle;
+		this.pinDist = cr.distanceTo(otherinst.x, otherinst.y, this.inst.x, this.inst.y);
+		this.myStartAngle = this.inst.angle;
+		this.lastKnownAngle = this.inst.angle;
+		this.theirStartAngle = otherinst.angle;
+		this.mode = mode_;
+	};
+	acts.Unpin = function ()
+	{
+		this.pinObject = null;
+	};
+	behaviorProto.exps = {};
+	var exps = behaviorProto.exps;
+	exps.PinnedUID = function (ret)
+	{
+		ret.set_int(this.pinObject ? this.pinObject.uid : -1);
+=======
+			if (o.hasOwnProperty(p))
+			{
+				try {
+					localStorage.setItem(prefix + p, o[p]);
+				}
+				catch (e)
+				{
+					this.runtime.trigger(cr.plugins_.WebStorage.prototype.cnds.OnQuotaExceeded, this);
+					return;
+				}
+			}
+		}
+	};
+	pluginProto.exps = {};
+	var exps = pluginProto.exps;
+	exps.LocalValue = function(ret,key)
+	{
+		ret.set_string(localStorage.getItem(prefix + key) || "");
+	};
+	exps.SessionValue = function(ret,key)
+	{
+		ret.set_string(sessionStorage.getItem(prefix + key) || "");
+	};
+	exps.LocalCount = function(ret)
+	{
+		ret.set_int(is_arcade ? 0 : localStorage.length);
+	};
+	exps.SessionCount = function(ret)
+	{
+		ret.set_int(is_arcade ? 0 : sessionStorage.length);
+	};
+	exps.LocalAt = function(ret,n)
+	{
+		if (is_arcade)
+			ret.set_string("");
+		else
+			ret.set_string(localStorage.getItem(localStorage.key(n)) || "");
+	};
+	exps.SessionAt = function(ret,n)
+	{
+		if (is_arcade)
+			ret.set_string("");
+		else
+			ret.set_string(sessionStorage.getItem(sessionStorage.key(n)) || "");
+	};
+	exps.LocalKeyAt = function(ret,n)
+	{
+		if (is_arcade)
+			ret.set_string("");
+		else
+			ret.set_string(localStorage.key(n));
+	};
+	exps.SessionKeyAt = function(ret,n)
+	{
+		if (is_arcade)
+			ret.set_string("");
+		else
+			ret.set_string(sessionStorage.key(n));
+	};
+	exps.AsJSON = function (ret)
+	{
+		var o = {}, i, len, k;
+		for (i = 0, len = localStorage.length; i < len; i++)
+		{
+			k = localStorage.key(i);
+			if (is_arcade)
+			{
+				if (k.substr(0, prefix.length) === prefix)
+				{
+					o[k.substr(prefix.length)] = localStorage.getItem(k);
+				}
+			}
+			else
+				o[k] = localStorage.getItem(k);
+		}
+		ret.set_string(JSON.stringify({
+			"c2dictionary": true,
+			"data": o
+		}));
+>>>>>>> origin/master:web-app/labyrinth/c2runtime.js
+	};
+}());
+;
+;
+cr.behaviors.custom = function(runtime)
+{
+	this.runtime = runtime;
+};
+(function ()
+{
+	var behaviorProto = cr.behaviors.custom.prototype;
+	behaviorProto.Type = function(behavior, objtype)
+	{
+		this.behavior = behavior;
+		this.objtype = objtype;
+		this.runtime = behavior.runtime;
+	};
+	var behtypeProto = behaviorProto.Type.prototype;
+	behtypeProto.onCreate = function()
+	{
+	};
+	behaviorProto.Instance = function(type, inst)
+	{
+		this.type = type;
+		this.behavior = type.behavior;
+		this.inst = inst;
+		this.runtime = type.runtime;
+		this.dx = 0;
+		this.dy = 0;
+		this.cancelStep = 0;
+		this.enabled = true;
+	};
+	var behinstProto = behaviorProto.Instance.prototype;
+	behinstProto.onCreate = function()
+	{
+		this.stepMode = this.properties[0];	// 0=None, 1=Linear, 2=Horizontal then vertical, 3=Vertical then horizontal
+		this.pxPerStep = this.properties[1];
+	};
+	behinstProto.getSpeed = function ()
+	{
+		return Math.sqrt(this.dx * this.dx + this.dy * this.dy);
+	};
+	behinstProto.getAngle = function ()
+	{
+		return Math.atan2(this.dy, this.dx);
+	};
+	function sign(x)
+	{
+		if (x === 0)
+			return 0;
+		else if (x < 0)
+			return -1;
+		else
+			return 1;
+	};
+	behinstProto.step = function (x, y, trigmethod)
+	{
+		var startx = this.inst.x;
+		var starty = this.inst.y;
+		var sx, sy, prog;
+		var steps = Math.round(Math.sqrt(x * x + y * y) / this.pxPerStep);
+		if (steps === 0)
+			steps = 1;
+		var i;
+		for (i = 1; i <= steps; i++)
+		{
+			prog = i / steps;
+			this.inst.x = startx + x * prog;
+			this.inst.y = starty + y * prog;
+			this.inst.set_bbox_changed();
+			this.runtime.trigger(trigmethod, this.inst);
+			if (this.cancelStep === 1)
+			{
+				i--;
+				prog = i / steps;
+				this.inst.x = startx + x * prog;
+				this.inst.y = starty + y * prog;
+				this.inst.set_bbox_changed();
+				return;
+			}
+			else if (this.cancelStep === 2)
+			{
+				return;
+			}
+		}
+	};
+	behinstProto.tick = function ()
+	{
+		var dt = this.runtime.getDt(this.inst);
+		var mx = this.dx * dt;
+		var my = this.dy * dt;
+		var i, steps;
+		if ((this.dx === 0 && this.dy === 0) || !this.enabled)
+			return;
+		this.cancelStep = 0;
+		if (this.stepMode === 0)		// none
+		{
+			this.inst.x += mx;
+			this.inst.y += my;
+		}
+		else if (this.stepMode === 1)	// linear
+		{
+			this.step(mx, my, cr.behaviors.custom.prototype.cnds.OnCMStep);
+		}
+		else if (this.stepMode === 2)	// horizontal then vertical
+		{
+			this.step(mx, 0, cr.behaviors.custom.prototype.cnds.OnCMHorizStep);
+			if (this.cancelStep === 0)
+				this.step(0, my, cr.behaviors.custom.prototype.cnds.OnCMHorizStep);
+		}
+		else if (this.stepMode === 3)	// vertical then horizontal
+		{
+			this.step(0, my, cr.behaviors.custom.prototype.cnds.OnCMHorizStep);
+			if (this.cancelStep === 0)
+				this.step(mx, 0, cr.behaviors.custom.prototype.cnds.OnCMHorizStep);
+		}
+		this.inst.set_bbox_changed();
+	};
+	behaviorProto.cnds = {};
+	var cnds = behaviorProto.cnds;
+	cnds.IsMoving = function ()
+	{
+		return this.dx != 0 || this.dy != 0;
+	};
+	cnds.CompareSpeed = function (axis, cmp, s)
+	{
+		var speed;
+		switch (axis) {
+		case 0:		speed = this.getSpeed();	break;
+		case 1:		speed = this.dx;			break;
+		case 2:		speed = this.dy;			break;
+		}
+		return cr.do_cmp(speed, cmp, s);
+	};
+	cnds.OnCMStep = function ()
+	{
+		return true;
+	};
+	cnds.OnCMHorizStep = function ()
+	{
+		return true;
+	};
+	cnds.OnCMVertStep = function ()
+	{
+		return true;
+	};
+	behaviorProto.acts = {};
+	var acts = behaviorProto.acts;
+	acts.Stop = function ()
+	{
+		this.dx = 0;
+		this.dy = 0;
+	};
+	acts.Reverse = function (axis)
+	{
+		switch (axis) {
+		case 0:
+			this.dx *= -1;
+			this.dy *= -1;
+			break;
+		case 1:
+			this.dx *= -1;
+			break;
+		case 2:
+			this.dy *= -1;
+			break;
+		}
+	};
+	acts.SetSpeed = function (axis, s)
+	{
+		var a;
+		switch (axis) {
+		case 0:
+			a = this.getAngle();
+			this.dx = Math.cos(a) * s;
+			this.dy = Math.sin(a) * s;
+			break;
+		case 1:
+			this.dx = s;
+			break;
+		case 2:
+			this.dy = s;
+			break;
+		}
+	};
+<<<<<<< HEAD:web-app/labyrinth/c2runtime.js
+	acts.Accelerate = function (axis, acc)
+	{
+		var dt = this.runtime.getDt(this.inst);
+		var ds = acc * dt;
+		var a;
+		switch (axis) {
+		case 0:
+			a = this.getAngle();
+			this.dx += Math.cos(a) * ds;
+			this.dy += Math.sin(a) * ds;
+			break;
+		case 1:
+			this.dx += ds;
+			break;
+		case 2:
+			this.dy += ds;
+			break;
+		}
+	};
+	acts.AccelerateAngle = function (acc, a_)
+	{
+		var dt = this.runtime.getDt(this.inst);
+		var ds = acc * dt;
+		var a = cr.to_radians(a_);
+		this.dx += Math.cos(a) * ds;
+		this.dy += Math.sin(a) * ds;
+	};
+	acts.AcceleratePos = function (acc, x, y)
+	{
+		var dt = this.runtime.getDt(this.inst);
+		var ds = acc * dt;
+		var a = Math.atan2(y - this.inst.y, x - this.inst.x);
+		this.dx += Math.cos(a) * ds;
+		this.dy += Math.sin(a) * ds;
+	};
+	acts.SetAngleOfMotion = function (a_)
+	{
+		var a = cr.to_radians(a_);
+		var s = this.getSpeed();
+		this.dx = Math.cos(a) * s;
+		this.dy = Math.sin(a) * s;
+	};
+	acts.RotateAngleOfMotionClockwise = function (a_)
+	{
+		var a = this.getAngle() + cr.to_radians(a_);
+		var s = this.getSpeed();
+		this.dx = Math.cos(a) * s;
+		this.dy = Math.sin(a) * s;
+	};
+	acts.RotateAngleOfMotionCounterClockwise = function (a_)
+	{
+		var a = this.getAngle() - cr.to_radians(a_);
+		var s = this.getSpeed();
+		this.dx = Math.cos(a) * s;
+		this.dy = Math.sin(a) * s;
+	};
+	acts.StopStepping = function (mode)
+	{
+		this.cancelStep = mode + 1;
+	};
+	acts.PushOutSolid = function (mode)
+	{
+		var a, ux, uy;
+		switch (mode) {
+		case 0:
+			a = this.getAngle();
+			ux = Math.cos(a);
+			uy = Math.sin(a);
+			this.runtime.pushOutSolid(this.inst, -ux, -uy, Math.max(this.getSpeed() * 3, 100));
+			break;
+		case 1:
+			this.runtime.pushOutSolidNearest(this.inst);
+			break;
+		case 2:
+			this.runtime.pushOutSolid(this.inst, 0, -1, Math.max(Math.abs(this.dy) * 3, 100));
+			break;
+		case 3:
+			this.runtime.pushOutSolid(this.inst, 0, 1, Math.max(Math.abs(this.dy) * 3, 100));
+			break;
+		case 4:
+			this.runtime.pushOutSolid(this.inst, -1, 0, Math.max(Math.abs(this.dx) * 3, 100));
+			break;
+		case 5:
+			this.runtime.pushOutSolid(this.inst, 1, 0, Math.max(Math.abs(this.dx) * 3, 100));
+			break;
+		}
+	};
+	acts.PushOutSolidAngle = function (a)
+	{
+		a = cr.to_radians(a);
+		var ux = Math.cos(a);
+		var uy = Math.sin(a);
+		this.runtime.pushOutSolid(this.inst, ux, uy, Math.max(this.getSpeed() * 3, 100));
+	};
+	acts.SetEnabled = function (en)
+	{
+		this.enabled = (en === 1);
+	};
+	behaviorProto.exps = {};
+	var exps = behaviorProto.exps;
+	exps.Speed = function (ret)
+	{
+		ret.set_float(this.getSpeed());
+=======
+	acts.SetSpeed = function (speed)
+	{
+		if (speed < 0)
+			speed = 0;
+		if (speed > this.maxspeed)
+			speed = this.maxspeed;
+		var a = Math.atan2(this.dy, this.dx);
+		this.dx = speed * Math.cos(a);
+		this.dy = speed * Math.sin(a);
+	};
+	acts.SetMaxSpeed = function (maxspeed)
+	{
+		this.maxspeed = maxspeed;
+		if (this.maxspeed < 0)
+			this.maxspeed = 0;
+	};
+	acts.SetAcceleration = function (acc)
+	{
+		this.acc = acc;
+		if (this.acc < 0)
+			this.acc = 0;
+	};
+	acts.SetDeceleration = function (dec)
+	{
+		this.dec = dec;
+		if (this.dec < 0)
+			this.dec = 0;
+	};
+	acts.SimulateControl = function (ctrl)
+	{
+		switch (ctrl) {
+		case 0:		this.simleft = true;	break;
+		case 1:		this.simright = true;	break;
+		case 2:		this.simup = true;		break;
+		case 3:		this.simdown = true;	break;
+		}
+	};
+	acts.SetEnabled = function (en)
+	{
+		this.enabled = (en === 1);
+	};
+	behaviorProto.exps = {};
+	var exps = behaviorProto.exps;
+	exps.Speed = function (ret)
+	{
+		ret.set_float(Math.sqrt(this.dx * this.dx + this.dy * this.dy));
+	};
+	exps.MaxSpeed = function (ret)
+	{
+		ret.set_float(this.maxspeed);
+	};
+	exps.Acceleration = function (ret)
+	{
+		ret.set_float(this.acc);
+	};
+	exps.Deceleration = function (ret)
+	{
+		ret.set_float(this.dec);
+	};
+	exps.MovingAngle = function (ret)
+	{
+		ret.set_float(cr.to_degrees(Math.atan2(this.dy, this.dx)));
+	};
+	exps.VectorX = function (ret)
+	{
+		ret.set_float(this.dx);
+	};
+	exps.VectorY = function (ret)
+	{
+		ret.set_float(this.dy);
+	};
+}());
+;
+;
+cr.behaviors.Fade = function(runtime)
+{
+	this.runtime = runtime;
+};
+(function ()
+{
+	var behaviorProto = cr.behaviors.Fade.prototype;
+	behaviorProto.Type = function(behavior, objtype)
+	{
+		this.behavior = behavior;
+		this.objtype = objtype;
+		this.runtime = behavior.runtime;
+	};
+	var behtypeProto = behaviorProto.Type.prototype;
+	behtypeProto.onCreate = function()
+	{
+	};
+	behaviorProto.Instance = function(type, inst)
+	{
+		this.type = type;
+		this.behavior = type.behavior;
+		this.inst = inst;				// associated object instance to modify
+		this.runtime = type.runtime;
+	};
+	var behinstProto = behaviorProto.Instance.prototype;
+	behinstProto.onCreate = function()
+	{
+		var active_at_start = this.properties[0] === 1;
+		this.fadeInTime = this.properties[1];
+		this.waitTime = this.properties[2];
+		this.fadeOutTime = this.properties[3];
+		this.destroy = this.properties[4];			// 0 = no, 1 = after fade out
+		this.stage = active_at_start ? 0 : 3;		// 0 = fade in, 1 = wait, 2 = fade out, 3 = done
+		this.stageTime = new cr.KahanAdder();
+		this.maxOpacity = (this.inst.opacity ? this.inst.opacity : 1.0);
+		if (active_at_start)
+		{
+			if (this.fadeInTime === 0)
+			{
+				this.stage = 1;
+				if (this.waitTime === 0)
+					this.stage = 2;
+			}
+			else
+			{
+				this.inst.opacity = 0;
+				this.runtime.redraw = true;
+			}
+		}
+	};
+	behinstProto.tick = function ()
+	{
+		this.stageTime.add(this.runtime.getDt(this.inst));
+		if (this.stage === 0)
+		{
+			this.inst.opacity = (this.stageTime.sum / this.fadeInTime) * this.maxOpacity;
+			this.runtime.redraw = true;
+			if (this.inst.opacity >= this.maxOpacity)
+			{
+				this.inst.opacity = this.maxOpacity;
+				this.stage = 1;	// wait stage
+				this.stageTime.reset();
+			}
+		}
+		if (this.stage === 1)
+		{
+			if (this.stageTime.sum >= this.waitTime)
+			{
+				this.stage = 2;	// fade out stage
+				this.stageTime.reset();
+			}
+		}
+		if (this.stage === 2)
+		{
+			if (this.fadeOutTime !== 0)
+			{
+				this.inst.opacity = this.maxOpacity - ((this.stageTime.sum / this.fadeOutTime) * this.maxOpacity);
+				this.runtime.redraw = true;
+				if (this.inst.opacity < 0)
+				{
+					this.inst.opacity = 0;
+					this.stage = 3;	// done
+					this.stageTime.reset();
+					this.runtime.trigger(cr.behaviors.Fade.prototype.cnds.OnFadeOutEnd, this.inst);
+					if (this.destroy === 1)
+						this.runtime.DestroyInstance(this.inst);
+				}
+			}
+		}
+	};
+	behinstProto.doStart = function ()
+	{
+		this.stage = 0;
+		this.stageTime.reset();
+		if (this.fadeInTime === 0)
+		{
+			this.stage = 1;
+			if (this.waitTime === 0)
+				this.stage = 2;
+		}
+		else
+		{
+			this.inst.opacity = 0;
+			this.runtime.redraw = true;
+		}
+	};
+	behaviorProto.cnds = {};
+	var cnds = behaviorProto.cnds;
+	cnds.OnFadeOutEnd = function ()
+	{
+		return true;
+	};
+	behaviorProto.acts = {};
+	var acts = behaviorProto.acts;
+	acts.StartFade = function ()
+	{
+		if (this.stage === 3)
+			this.doStart();
+	};
+	acts.RestartFade = function ()
+	{
+		this.doStart();
+	};
+}());
+;
+;
+cr.behaviors.Flash = function(runtime)
+{
+	this.runtime = runtime;
+};
+(function ()
+{
+	var behaviorProto = cr.behaviors.Flash.prototype;
+	behaviorProto.Type = function(behavior, objtype)
+	{
+		this.behavior = behavior;
+		this.objtype = objtype;
+		this.runtime = behavior.runtime;
+	};
+	var behtypeProto = behaviorProto.Type.prototype;
+	behtypeProto.onCreate = function()
+	{
+	};
+	behaviorProto.Instance = function(type, inst)
+	{
+		this.type = type;
+		this.behavior = type.behavior;
+		this.inst = inst;				// associated object instance to modify
+		this.runtime = type.runtime;
+	};
+	var behinstProto = behaviorProto.Instance.prototype;
+	behinstProto.onCreate = function()
+	{
+		this.ontime = 0;
+		this.offtime = 0;
+		this.stage = 0;			// 0 = on, 1 = off
+		this.stagetimeleft = 0;
+		this.timeleft = 0;
+	};
+	behinstProto.tick = function ()
+	{
+		if (this.timeleft <= 0)
+			return;		// not flashing
+		var dt = this.runtime.getDt(this.inst);
+		this.timeleft -= dt;
+		if (this.timeleft <= 0)
+		{
+			this.timeleft = 0;
+			this.inst.visible = true;
+			this.runtime.redraw = true;
+			this.runtime.trigger(cr.behaviors.Flash.prototype.cnds.OnFlashEnded, this.inst);
+			return;
+		}
+		this.stagetimeleft -= dt;
+		if (this.stagetimeleft <= 0)
+		{
+			if (this.stage === 0)
+			{
+				this.inst.visible = false;
+				this.stage = 1;
+				this.stagetimeleft += this.offtime;
+			}
+			else
+			{
+				this.inst.visible = true;
+				this.stage = 0;
+				this.stagetimeleft += this.ontime;
+			}
+			this.runtime.redraw = true;
+		}
+	};
+	behaviorProto.cnds = {};
+	var cnds = behaviorProto.cnds;
+	cnds.IsFlashing = function ()
+	{
+		return this.timeleft > 0;
+	};
+	cnds.OnFlashEnded = function ()
+	{
+		return true;
+	};
+	behaviorProto.acts = {};
+	var acts = behaviorProto.acts;
+	acts.Flash = function (on_, off_, dur_)
+	{
+		this.ontime = on_;
+		this.offtime = off_;
+		this.stage = 1;		// always start off
+		this.stagetimeleft = off_;
+		this.timeleft = dur_;
+		this.inst.visible = false;
+		this.runtime.redraw = true;
+	};
+	acts.StopFlashing = function ()
+	{
+		this.timeleft = 0;
+		this.inst.visible = true;
+		this.runtime.redraw = true;
+		return;
+	};
+	behaviorProto.exps = {};
+	var exps = behaviorProto.exps;
+}());
+;
+;
 cr.behaviors.Pin = function(runtime)
 {
 	this.runtime = runtime;
@@ -10584,11 +13315,17 @@ cr.behaviors.Pin = function(runtime)
 	cnds.IsPinned = function ()
 	{
 		return !!this.pinObject;
+>>>>>>> origin/master:web-app/labyrinth/c2runtime.js
 	};
 	behaviorProto.acts = {};
 	var acts = behaviorProto.acts;
 	acts.Pin = function (obj, mode_)
 	{
+<<<<<<< HEAD:web-app/labyrinth/c2runtime.js
+		ret.set_float(cr.to_degrees(this.getAngle()));
+	};
+	exps.dx = function (ret)
+=======
 		if (!obj)
 			return;
 		var otherinst = obj.getFirstPicked();
@@ -10603,12 +13340,17 @@ cr.behaviors.Pin = function(runtime)
 		this.mode = mode_;
 	};
 	acts.Unpin = function ()
+>>>>>>> origin/master:web-app/labyrinth/c2runtime.js
 	{
 		this.pinObject = null;
 	};
+<<<<<<< HEAD:web-app/labyrinth/c2runtime.js
+	exps.dy = function (ret)
+=======
 	behaviorProto.exps = {};
 	var exps = behaviorProto.exps;
 	exps.PinnedUID = function (ret)
+>>>>>>> origin/master:web-app/labyrinth/c2runtime.js
 	{
 		ret.set_int(this.pinObject ? this.pinObject.uid : -1);
 	};
@@ -10679,6 +13421,19 @@ cr.getProjectModel = function() { return [
 		false
 	]
 ,	[
+<<<<<<< HEAD:web-app/labyrinth/c2runtime.js
+		cr.plugins_.TextBox,
+		false,
+		true,
+		true,
+		true,
+		false,
+		false,
+		false
+	]
+,	[
+=======
+>>>>>>> origin/master:web-app/labyrinth/c2runtime.js
 		cr.plugins_.Keyboard,
 		true,
 		false,
@@ -10689,6 +13444,19 @@ cr.getProjectModel = function() { return [
 		false
 	]
 ,	[
+<<<<<<< HEAD:web-app/labyrinth/c2runtime.js
+		cr.plugins_.Mouse,
+		true,
+		false,
+		false,
+		false,
+		false,
+		false,
+		false
+	]
+,	[
+=======
+>>>>>>> origin/master:web-app/labyrinth/c2runtime.js
 		cr.plugins_.Particles,
 		false,
 		true,
@@ -10709,7 +13477,11 @@ cr.getProjectModel = function() { return [
 		true
 	]
 ,	[
+<<<<<<< HEAD:web-app/labyrinth/c2runtime.js
+		cr.plugins_.Text,
+=======
 		cr.plugins_.Sprite,
+>>>>>>> origin/master:web-app/labyrinth/c2runtime.js
 		false,
 		true,
 		true,
@@ -11001,13 +13773,46 @@ cr.getProjectModel = function() { return [
 		false
 	]
 ,	[
+<<<<<<< HEAD:web-app/labyrinth/c2runtime.js
 		"t12",
 		cr.plugins_.Text,
 		false,
 		0,
 		0,
 		null,
+=======
+		cr.plugins_.WebStorage,
+		true,
+		false,
+		false,
+		false,
+		false,
+		false,
+		false
+	]
+	],
+	[
+	[
+		"t0",
+		cr.plugins_.Sprite,
+		false,
+		0,
+		0,
+>>>>>>> origin/master:web-app/labyrinth/c2runtime.js
 		null,
+		[
+			[
+			"Default",
+			5,
+			false,
+			1,
+			0,
+			false,
+			[
+				["images/labyrinth-sheet0.png", 2046, 0, 0, 2584, 1644, 1, 0.5, 0.5,[],[]]
+			]
+			]
+		],
 		[
 		],
 		false,
@@ -11018,6 +13823,277 @@ cr.getProjectModel = function() { return [
 		cr.plugins_.Text,
 		false,
 		0,
+		1,
+		null,
+<<<<<<< HEAD:web-app/labyrinth/c2runtime.js
+		null,
+=======
+		[
+			[
+			"Default",
+			5,
+			false,
+			1,
+			0,
+			false,
+			[
+				["images/wall-sheet0.png", 2046, 0, 0, 20, 20, 1, 0.5, 0.5,[],[]]
+			]
+			]
+		],
+>>>>>>> origin/master:web-app/labyrinth/c2runtime.js
+		[
+		[
+			"Solid",
+			cr.behaviors.solid
+		]
+		],
+		false,
+		false
+	]
+,	[
+		"t14",
+		cr.plugins_.WebStorage,
+		false,
+		0,
+		2,
+		null,
+<<<<<<< HEAD:web-app/labyrinth/c2runtime.js
+		null,
+=======
+		[
+			[
+			"Default",
+			5,
+			false,
+			1,
+			0,
+			false,
+			[
+				["images/ball-sheet0.png", 2046, 0, 0, 20, 20, 1, 0.5, 0.5,[],[-0.35,-0.35,0,-0.5,0.35,-0.35,0.5,0,0.35,0.35,0,0.5,-0.35,0.35,-0.5,0]]
+			]
+			]
+		],
+>>>>>>> origin/master:web-app/labyrinth/c2runtime.js
+		[
+		[
+			"Solid",
+			cr.behaviors.solid
+		]
+,		[
+			"8Direction",
+			cr.behaviors.EightDir
+		]
+		],
+		false,
+		false
+		,[]
+	]
+,	[
+		"t15",
+		cr.plugins_.Mouse,
+		false,
+		0,
+		0,
+<<<<<<< HEAD:web-app/labyrinth/c2runtime.js
+		null,
+=======
+		["images/explosion.png", 3965],
+>>>>>>> origin/master:web-app/labyrinth/c2runtime.js
+		null,
+		[
+		],
+		false,
+		false
+		,[]
+	]
+,	[
+<<<<<<< HEAD:web-app/labyrinth/c2runtime.js
+		"t16",
+=======
+		"t4",
+		cr.plugins_.Audio,
+		false,
+		0,
+		0,
+		null,
+		null,
+		[
+		],
+		false,
+		false
+		,[0]
+	]
+,	[
+		"t5",
+		cr.plugins_.Sprite,
+		false,
+		0,
+		2,
+		null,
+		[
+			[
+			"Default",
+			5,
+			false,
+			1,
+			0,
+			false,
+			[
+				["images/arrow-sheet0.png", 2046, 0, 0, 200, 100, 1, 0.5, 0.5,[],[-0.315,-0.13,0.31,-0.12,0.38,0,0.31,0.12,0,0.14,-0.32,0.14,-0.48,0]]
+			]
+			]
+		],
+		[
+		[
+			"Flash",
+			cr.behaviors.Flash
+		]
+,		[
+			"Fade",
+			cr.behaviors.Fade
+		]
+		],
+		false,
+		false
+	]
+,	[
+		"t6",
+>>>>>>> origin/master:web-app/labyrinth/c2runtime.js
+		cr.plugins_.Sprite,
+		false,
+		0,
+		0,
+		null,
+		[
+			[
+			"Default",
+			5,
+			false,
+			1,
+			0,
+			false,
+			[
+<<<<<<< HEAD:web-app/labyrinth/c2runtime.js
+				["images/sprite2-sheet0.png", 2046, 0, 0, 200, 200, 1, 0.5, 0.5,[],[]]
+=======
+				["images/arrow2-sheet0.png", 2046, 0, 0, 200, 100, 1, 0.5, 0.5,[],[-0.315,-0.13,0.31,-0.12,0.38,0,0.31,0.12,0,0.14,-0.32,0.14,-0.48,0]]
+>>>>>>> origin/master:web-app/labyrinth/c2runtime.js
+			]
+			]
+		],
+		[
+		],
+		false,
+		false
+	]
+,	[
+<<<<<<< HEAD:web-app/labyrinth/c2runtime.js
+		"t17",
+=======
+		"t7",
+>>>>>>> origin/master:web-app/labyrinth/c2runtime.js
+		cr.plugins_.Sprite,
+		false,
+		0,
+		0,
+		null,
+		[
+			[
+			"Default",
+			5,
+			false,
+			1,
+			0,
+			false,
+			[
+<<<<<<< HEAD:web-app/labyrinth/c2runtime.js
+				["images/sprite3-sheet0.png", 2046, 0, 0, 200, 200, 1, 0.5, 0.5,[],[]]
+=======
+				["images/sprite-sheet0.png", 2046, 0, 0, 200, 200, 1, 0.5, 0.5,[],[]]
+>>>>>>> origin/master:web-app/labyrinth/c2runtime.js
+			]
+			]
+		],
+		[
+		],
+		false,
+		false
+	]
+,	[
+<<<<<<< HEAD:web-app/labyrinth/c2runtime.js
+		"t18",
+=======
+		"t8",
+>>>>>>> origin/master:web-app/labyrinth/c2runtime.js
+		cr.plugins_.Sprite,
+		false,
+		0,
+		0,
+		null,
+		[
+			[
+			"Default",
+			5,
+			false,
+			1,
+			0,
+			false,
+			[
+<<<<<<< HEAD:web-app/labyrinth/c2runtime.js
+				["images/submitform-sheet0.png", 2046, 0, 0, 300, 300, 1, 0.5, 0.5,[],[]]
+=======
+				["images/exit-sheet0.png", 2046, 0, 0, 100, 100, 1, 0.5, 0.5,[],[-0.11,-0.11,0,-0.39,0.02,-0.02,0.02,0.02,0,0.32,-0.12,0.12,-0.11,0]]
+>>>>>>> origin/master:web-app/labyrinth/c2runtime.js
+			]
+			]
+		],
+		[
+		],
+		false,
+		false
+	]
+,	[
+		"t19",
+		cr.plugins_.TextBox,
+		false,
+		0,
+		1,
+		null,
+		null,
+		[
+		[
+<<<<<<< HEAD:web-app/labyrinth/c2runtime.js
+			"Pin",
+			cr.behaviors.Pin
+		]
+=======
+			"Solid",
+			cr.behaviors.solid
+		]
+		],
+		false,
+		false
+	]
+,	[
+		"t9",
+		cr.plugins_.Keyboard,
+		false,
+		0,
+		0,
+		null,
+		null,
+		[
+		],
+		false,
+		false
+		,[]
+	]
+,	[
+		"t10",
+		cr.plugins_.Text,
+		false,
+		0,
 		0,
 		null,
 		null,
@@ -11027,6 +14103,116 @@ cr.getProjectModel = function() { return [
 		false
 	]
 ,	[
+		"t11",
+		cr.plugins_.Button,
+		false,
+		0,
+		1,
+		null,
+		null,
+		[
+		[
+			"Pin",
+			cr.behaviors.Pin
+		]
+		],
+		true,
+		false
+	]
+,	[
+		"t12",
+		cr.plugins_.Text,
+		false,
+		0,
+		0,
+		null,
+		null,
+		[
+>>>>>>> origin/master:web-app/labyrinth/c2runtime.js
+		],
+		false,
+		false
+	]
+,	[
+<<<<<<< HEAD:web-app/labyrinth/c2runtime.js
+		"t20",
+		cr.plugins_.Button,
+=======
+		"t13",
+		cr.plugins_.Text,
+>>>>>>> origin/master:web-app/labyrinth/c2runtime.js
+		false,
+		0,
+		1,
+		null,
+		null,
+		[
+		[
+			"Pin",
+			cr.behaviors.Pin
+		]
+		],
+		false,
+		false
+	]
+,	[
+		"t21",
+		cr.plugins_.Text,
+		false,
+		0,
+		1,
+		null,
+		null,
+<<<<<<< HEAD:web-app/labyrinth/c2runtime.js
+		[
+		[
+			"Pin",
+			cr.behaviors.Pin
+		]
+		],
+		false,
+		false
+	]
+,	[
+		"t22",
+		cr.plugins_.Text,
+		false,
+		0,
+		1,
+		null,
+=======
+>>>>>>> origin/master:web-app/labyrinth/c2runtime.js
+		null,
+		[
+		[
+			"Pin",
+			cr.behaviors.Pin
+		]
+		],
+		false,
+		false
+	]
+,	[
+<<<<<<< HEAD:web-app/labyrinth/c2runtime.js
+		"t23",
+		cr.plugins_.Sprite,
+		false,
+		0,
+		1,
+		null,
+		[
+			[
+			"Default",
+			5,
+			false,
+			1,
+			0,
+			false,
+			[
+				["images/move-sheet0.png", 2046, 0, 0, 20, 20, 1, 0.5, 0.5,[],[]]
+			]
+			]
+=======
 		"t14",
 		cr.plugins_.Text,
 		false,
@@ -11035,6 +14221,7 @@ cr.getProjectModel = function() { return [
 		null,
 		null,
 		[
+>>>>>>> origin/master:web-app/labyrinth/c2runtime.js
 		],
 		false,
 		false
@@ -11048,6 +14235,13 @@ cr.getProjectModel = function() { return [
 		null,
 		null,
 		[
+<<<<<<< HEAD:web-app/labyrinth/c2runtime.js
+		[
+			"CustomMovement",
+			cr.behaviors.custom
+		]
+=======
+>>>>>>> origin/master:web-app/labyrinth/c2runtime.js
 		],
 		false,
 		false
@@ -11316,6 +14510,7 @@ cr.getProjectModel = function() { return [
 ,			[
 				[498, 150, 0, 284, 13, 0, 1.5708, 1, 0.5, 0.5],
 				1,
+<<<<<<< HEAD:web-app/labyrinth/c2runtime.js
 				[
 				],
 				[
@@ -11466,6 +14661,8 @@ cr.getProjectModel = function() { return [
 ,			[
 				[306, 407, 0, 53, 13, 0, 1.5708, 1, 0.5, 0.5],
 				1,
+=======
+>>>>>>> origin/master:web-app/labyrinth/c2runtime.js
 				[
 				],
 				[
@@ -11479,6 +14676,269 @@ cr.getProjectModel = function() { return [
 				]
 			]
 ,			[
+<<<<<<< HEAD:web-app/labyrinth/c2runtime.js
+				[387, 238, 0, 53, 13, 0, 0, 1, 0.5, 0.5],
+=======
+				[476, 286, 0, 50, 13, 0, 0, 1, 0.5, 0.5],
+>>>>>>> origin/master:web-app/labyrinth/c2runtime.js
+				1,
+				[
+				],
+				[
+				[
+				]
+				],
+				[
+					0,
+					0,
+					0
+				]
+			]
+,			[
+<<<<<<< HEAD:web-app/labyrinth/c2runtime.js
+				[760, 256, 0, 354, 337, 0, 0, 1, 0, 0.5],
+				3,
+=======
+				[455, 177, 0, 231, 13, 0, 1.5708, 1, 0.5, 0.5],
+				1,
+>>>>>>> origin/master:web-app/labyrinth/c2runtime.js
+				[
+				],
+				[
+				],
+				[
+					100,
+					360,
+					1,
+					1,
+					80,
+					32,
+					100,
+					-20,
+					0,
+					0,
+					160,
+					16,
+					0,
+					0,
+					0,
+					20,
+					200,
+					0,
+					0,
+					0.5
+				]
+			]
+,			[
+<<<<<<< HEAD:web-app/labyrinth/c2runtime.js
+				[279, 349, 0, 72, 24, 0, 0, 1, 0, 0],
+				11,
+=======
+				[175, 229, 0, 322, 13, 0, 1.5708, 1, 0.5, 0.5],
+				1,
+>>>>>>> origin/master:web-app/labyrinth/c2runtime.js
+				[
+				],
+				[
+				[
+				]
+				],
+				[
+					"START",
+					"",
+					1,
+					1,
+					""
+				]
+			]
+,			[
+<<<<<<< HEAD:web-app/labyrinth/c2runtime.js
+				[329, 226, 0, 271, 151, 0, 0, 1, 0.5, 0.5],
+				18,
+=======
+				[219, 172, 0, 338, 13, 0, 1.5708, 1, 0.5, 0.5],
+				1,
+>>>>>>> origin/master:web-app/labyrinth/c2runtime.js
+				[
+				],
+				[
+				],
+				[
+					0,
+					0,
+					0
+				]
+			]
+,			[
+<<<<<<< HEAD:web-app/labyrinth/c2runtime.js
+				[209, 255, 0, 147, 22, 0, 0, 1, 0, 0],
+				19,
+=======
+				[265, 229, 0, 320, 13, 0, 1.5708, 1, 0.5, 0.5],
+				1,
+>>>>>>> origin/master:web-app/labyrinth/c2runtime.js
+				[
+				],
+				[
+				[
+				]
+				],
+				[
+					"",
+					"",
+					"",
+					1,
+					1,
+					0,
+					0,
+					0,
+					""
+				]
+			]
+,			[
+<<<<<<< HEAD:web-app/labyrinth/c2runtime.js
+				[366, 257, 0, 72, 24, 0, 0, 1, 0, 0],
+				20,
+=======
+				[363, 246, 0, 375, 13, 0, 1.5708, 1, 0.5, 0.5],
+				1,
+>>>>>>> origin/master:web-app/labyrinth/c2runtime.js
+				[
+				],
+				[
+				[
+				]
+				],
+				[
+					"Submit",
+					"",
+					1,
+					1,
+					""
+				]
+			]
+,			[
+<<<<<<< HEAD:web-app/labyrinth/c2runtime.js
+				[200, 162, 0, 258, 30, 0, 0, 1, 0, 0],
+				21,
+=======
+				[547, 151, 0, 284, 13, 0, 1.5708, 1, 0.5, 0.5],
+				1,
+>>>>>>> origin/master:web-app/labyrinth/c2runtime.js
+				[
+				],
+				[
+				[
+				]
+				],
+				[
+					"Type in name and submit your time",
+					0,
+					"12pt Arial",
+					"rgb(0,0,0)",
+					0,
+					0,
+					0
+				]
+			]
+,			[
+<<<<<<< HEAD:web-app/labyrinth/c2runtime.js
+				[214, 216, 0, 98, 30, 0, 0, 1, 0, 0],
+				22,
+=======
+				[411, 224, 0, 327, 13, 0, 1.5708, 1, 0.5, 0.5],
+				1,
+>>>>>>> origin/master:web-app/labyrinth/c2runtime.js
+				[
+				],
+				[
+				[
+				]
+				],
+				[
+					"",
+					0,
+					"12pt Arial",
+					"rgb(0,0,0)",
+					0,
+					0,
+					0
+				]
+			]
+<<<<<<< HEAD:web-app/labyrinth/c2runtime.js
+			]
+		]
+,		[
+			"exit",
+			2,
+			true,
+			[255, 255, 255],
+			true,
+			1,
+			1,
+			1,
+			false,
+			1,
+			[
+			[
+				[621, 313, 0, 39.4968, 19.7484, 0, 0, 1, 0.5, 0.5],
+				5,
+=======
+,			[
+				[491, 384, 0, 171, 13, 0, 0, 1, 0.5, 0.5],
+				1,
+>>>>>>> origin/master:web-app/labyrinth/c2runtime.js
+				[
+				],
+				[
+				[
+				],
+				[
+					1,
+					0.5,
+					1,
+					0.5,
+					0
+				]
+				],
+				[
+					0,
+					0,
+					0
+				]
+			]
+,			[
+<<<<<<< HEAD:web-app/labyrinth/c2runtime.js
+				[57, 234, 0, 41.4729, 41.4729, 0, 0, 1, 0.5, 0.5],
+				8,
+=======
+				[306, 407, 0, 53, 13, 0, 1.5708, 1, 0.5, 0.5],
+				1,
+>>>>>>> origin/master:web-app/labyrinth/c2runtime.js
+				[
+				],
+				[
+				[
+				]
+				],
+				[
+					0,
+					0,
+					0
+				]
+			]
+,			[
+<<<<<<< HEAD:web-app/labyrinth/c2runtime.js
+				[287, 442, 0, 114, 30, 0, 0, 1, 0, 0],
+				13,
+				[
+				],
+				[
+				],
+				[
+					"",
+					1,
+=======
 				[387, 238, 0, 53, 13, 0, 0, 1, 0.5, 0.5],
 				1,
 				[
@@ -11584,6 +15044,7 @@ cr.getProjectModel = function() { return [
 				[
 					"",
 					0,
+>>>>>>> origin/master:web-app/labyrinth/c2runtime.js
 					"18pt Verdana",
 					"rgb(255,255,255)",
 					0,
@@ -11641,6 +15102,20 @@ cr.getProjectModel = function() { return [
 		[
 		[
 			1,
+<<<<<<< HEAD:web-app/labyrinth/c2runtime.js
+			"PreStartTime",
+			0,
+			0		]
+,		[
+			1,
+			"GameStarted",
+			1,
+			"False"
+		]
+,		[
+			1,
+=======
+>>>>>>> origin/master:web-app/labyrinth/c2runtime.js
 			"CurrentTime",
 			0,
 			0		]
@@ -11650,10 +15125,17 @@ cr.getProjectModel = function() { return [
 			false,
 			[
 			[
+<<<<<<< HEAD:web-app/labyrinth/c2runtime.js
+				11,
+				cr.plugins_.Button.prototype.cnds.OnClicked,
+				null,
+				true,
+=======
 				-1,
 				cr.system_object.prototype.cnds.EveryTick,
 				null,
 				false,
+>>>>>>> origin/master:web-app/labyrinth/c2runtime.js
 				false,
 				false,
 				false
@@ -11661,23 +15143,82 @@ cr.getProjectModel = function() { return [
 			],
 			[
 			[
+<<<<<<< HEAD:web-app/labyrinth/c2runtime.js
+				4,
+				cr.plugins_.Audio.prototype.acts.Play,
+				null
+				,[
+				[
+					2,
+					["bgmusic",true]
+				]
+,				[
+					3,
+					1
+				]
+,				[
+					1,
+					[
+						2,
+						""
+					]
+				]
+				]
+			]
+,			[
+				11,
+				cr.plugins_.Button.prototype.acts.SetVisible,
+				null
+				,[
+				[
+					3,
+					0
+				]
+				]
+			]
+,			[
+=======
+>>>>>>> origin/master:web-app/labyrinth/c2runtime.js
 				-1,
 				cr.system_object.prototype.acts.SetVar,
 				null
 				,[
 				[
 					11,
+<<<<<<< HEAD:web-app/labyrinth/c2runtime.js
+					"GameStarted"
+=======
 					"CurrentTime"
+>>>>>>> origin/master:web-app/labyrinth/c2runtime.js
 				]
 ,				[
 					7,
 					[
+<<<<<<< HEAD:web-app/labyrinth/c2runtime.js
+						2,
+						"True"
+=======
 						19,
 						cr.system_object.prototype.exps.time
+>>>>>>> origin/master:web-app/labyrinth/c2runtime.js
 					]
 				]
 				]
 			]
+<<<<<<< HEAD:web-app/labyrinth/c2runtime.js
+,			[
+				13,
+				cr.plugins_.Text.prototype.acts.SetVisible,
+				null
+				,[
+				[
+					3,
+					1
+				]
+				]
+			]
+=======
+>>>>>>> origin/master:web-app/labyrinth/c2runtime.js
 			]
 		]
 ,		[
@@ -12005,7 +15546,25 @@ cr.getProjectModel = function() { return [
 						]
 					]
 ,					[
+<<<<<<< HEAD:web-app/labyrinth/c2runtime.js
+						13,
+						cr.plugins_.Text.prototype.acts.SetText,
+						null
+						,[
+						[
+							7,
+							[
+								23,
+								"TotalTime"
+							]
+						]
+						]
+					]
+,					[
+						22,
+=======
 						14,
+>>>>>>> origin/master:web-app/labyrinth/c2runtime.js
 						cr.plugins_.Text.prototype.acts.SetText,
 						null
 						,[
@@ -12049,7 +15608,11 @@ cr.getProjectModel = function() { return [
 						,[
 						[
 							2,
+<<<<<<< HEAD:web-app/labyrinth/c2runtime.js
+							["applause-04",false]
+=======
 							["applause-04",true]
+>>>>>>> origin/master:web-app/labyrinth/c2runtime.js
 						]
 ,						[
 							3,
@@ -12071,7 +15634,11 @@ cr.getProjectModel = function() { return [
 						,[
 						[
 							2,
+<<<<<<< HEAD:web-app/labyrinth/c2runtime.js
+							["cheering-03",false]
+=======
 							["cheering-03",true]
+>>>>>>> origin/master:web-app/labyrinth/c2runtime.js
 						]
 ,						[
 							3,
@@ -12101,7 +15668,11 @@ cr.getProjectModel = function() { return [
 						]
 					]
 ,					[
+<<<<<<< HEAD:web-app/labyrinth/c2runtime.js
+						14,
+=======
 						15,
+>>>>>>> origin/master:web-app/labyrinth/c2runtime.js
 						cr.plugins_.WebStorage.prototype.acts.StoreSession,
 						null
 						,[
@@ -12139,6 +15710,122 @@ cr.getProjectModel = function() { return [
 			false,
 			[
 			[
+<<<<<<< HEAD:web-app/labyrinth/c2runtime.js
+				-1,
+				cr.system_object.prototype.cnds.CompareVar,
+				null,
+				false,
+				false,
+				false,
+				false
+				,[
+				[
+					11,
+					"GameStarted"
+				]
+,				[
+					8,
+					0
+				]
+,				[
+					7,
+					[
+						2,
+						"True"
+					]
+				]
+				]
+			]
+			],
+			[
+			[
+				-1,
+				cr.system_object.prototype.acts.SetVar,
+				null
+				,[
+				[
+					11,
+					"CurrentTime"
+				]
+,				[
+					7,
+					[
+						5,
+						[
+							19,
+							cr.system_object.prototype.exps.time
+						]
+						,[
+							23,
+							"PreStartTime"
+						]
+					]
+				]
+				]
+			]
+			]
+		]
+,		[
+			0,
+			null,
+			false,
+			[
+			[
+				-1,
+				cr.system_object.prototype.cnds.CompareVar,
+				null,
+				false,
+				false,
+				false,
+				false
+				,[
+				[
+					11,
+					"GameStarted"
+				]
+,				[
+					8,
+					0
+				]
+,				[
+					7,
+					[
+						2,
+						"False"
+					]
+				]
+				]
+			]
+			],
+			[
+			[
+				-1,
+				cr.system_object.prototype.acts.SetVar,
+				null
+				,[
+				[
+					11,
+					"PreStartTime"
+				]
+,				[
+					7,
+					[
+						19,
+						cr.system_object.prototype.exps.time
+					]
+				]
+				]
+			]
+			]
+		]
+,		[
+			0,
+			null,
+			false,
+			[
+			[
+=======
+>>>>>>> origin/master:web-app/labyrinth/c2runtime.js
 				2,
 				cr.plugins_.Sprite.prototype.cnds.OnCollision,
 				null,
@@ -12210,7 +15897,11 @@ cr.getProjectModel = function() { return [
 				,[
 				[
 					2,
+<<<<<<< HEAD:web-app/labyrinth/c2runtime.js
+					["explosn-01",false]
+=======
 					["explosn-01",true]
+>>>>>>> origin/master:web-app/labyrinth/c2runtime.js
 				]
 ,				[
 					3,
