@@ -12521,7 +12521,7 @@ cr.getProjectModel = function() { return [
 				]
 			]
 ,			[
-				[346, 605, 0, 271, 151, 0, 0, 1, 0.5, 0.5],
+				[331, 583, 0, 271, 151, 0, 0, 1, 0.5, 0.5],
 				18,
 				[
 				],
@@ -12534,7 +12534,7 @@ cr.getProjectModel = function() { return [
 				]
 			]
 ,			[
-				[226, 634, 0, 147, 22, 0, 0, 1, 0, 0],
+				[211, 612, 0, 147, 22, 0, 0, 1, 0, 0],
 				19,
 				[
 				],
@@ -12555,7 +12555,7 @@ cr.getProjectModel = function() { return [
 				]
 			]
 ,			[
-				[383, 636, 0, 72, 24, 0, 0, 1, 0, 0],
+				[368, 614, 0, 72, 24, 0, 0, 1, 0, 0],
 				20,
 				[
 				],
@@ -12572,7 +12572,7 @@ cr.getProjectModel = function() { return [
 				]
 			]
 ,			[
-				[217, 541, 0, 258, 30, 0, 0, 1, 0, 0],
+				[202, 519, 0, 258, 30, 0, 0, 1, 0, 0],
 				21,
 				[
 				],
@@ -12591,7 +12591,7 @@ cr.getProjectModel = function() { return [
 				]
 			]
 ,			[
-				[231, 595, 0, 98, 30, 0, 0, 1, 0, 0],
+				[216, 573, 0, 98, 30, 0, 0, 1, 0, 0],
 				22,
 				[
 				],
@@ -13587,7 +13587,3 @@ cr.getProjectModel = function() { return [
 	false,
 	0
 ];};
-
-window["cr"] = cr;
-window["cr"]["createRuntime"] = cr.createRuntime;
-window["cr"]["createDCRuntime"] = cr.createDCRuntime;
