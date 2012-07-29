@@ -1,9 +1,5 @@
 ﻿CACHE MANIFEST
-<<<<<<< HEAD
-#1343507404
-=======
-#1343064502
->>>>>>> origin/master
+#1343582734
 index.html
 c2runtime.js
 jquery-1.7.1.min.js
@@ -16,27 +12,19 @@ images\arrow-sheet0.png
 images\arrow2-sheet0.png
 images\sprite-sheet0.png
 images\exit-sheet0.png
-<<<<<<< HEAD
 images\sprite2-sheet0.png
 images\sprite3-sheet0.png
 images\submitform-sheet0.png
 images\move-sheet0.png
-=======
-media\explosn-01.m4a
-media\explosn-01.ogg
->>>>>>> origin/master
 media\applause-04.m4a
 media\applause-04.ogg
 media\cheering-03.m4a
 media\cheering-03.ogg
-<<<<<<< HEAD
 media\explosn-01.m4a
 media\explosn-01.ogg
 media\bgmusic.m4a
 media\bgmusic.ogg
 media\music.m4a
 media\music.ogg
-=======
->>>>>>> origin/master
 NETWORK:
 *
