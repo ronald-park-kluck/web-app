@@ -33,6 +33,7 @@
 
 html {
 	background: url('../images/maze.png') no-repeat center center;
+	background-attachment: fixed;
 }
 
 body {
