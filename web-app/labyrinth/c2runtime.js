@@ -7020,6 +7020,147 @@ cr.do_cmp = function (x, cmp, y)
 };
 ;
 ;
+/*!
+ * jQuery ajaxProgress Plugin v0.5.0
+ * Requires jQuery v1.5.0 or later
+ *
+ * http://www.kpozin.net/ajaxprogress
+ *
+ * (c) 2011, Konstantin Pozin
+ * Licensed under MIT license.
+ */
+(function($) {
+    var support = $["support"]["ajaxProgress"] = ("onprogress" in $["ajaxSettings"]["xhr"]());
+    if (!support) {
+        return;
+    }
+    var NAMESPACE = ".ajaxprogress";
+    $["fn"]["ajaxProgress"] = function (f) {
+        return this.bind("ajaxProgress", f);
+    };
+    $("html").bind("ajaxSend" + NAMESPACE, function(event, jqXHR, ajaxOptions) {
+        ajaxOptions["__jqXHR"] = jqXHR;
+    });
+    /**
+     * @param {XMLHttpRequestProgressEvent} evt
+     * @param {Object} options jQuery AJAX options
+     */
+    function handleOnProgress(evt, options) {
+        if (options["global"]) {
+            $["event"]["trigger"]("ajaxProgress", [evt, options.__jqXHR]);
+        }
+        if (typeof options["progress"] === "function") {
+            options["progress"](options["__jqXHR"], evt);
+        }
+    }
+    var makeOriginalXhr = $["ajaxSettings"]["xhr"].bind($["ajaxSettings"]);
+    var newOptions = {};
+    newOptions["xhr"] = function () {
+        var s = this;
+        var newXhr = makeOriginalXhr();
+        if (newXhr) {
+            newXhr.addEventListener("progress", function(evt) {
+                handleOnProgress(evt, s);
+            });
+        }
+        return newXhr;
+    };
+    $["ajaxSetup"](newOptions);
+})(jQuery);
+cr.plugins_.AJAX = function(runtime)
+{
+	this.runtime = runtime;
+};
+(function ()
+{
+	var pluginProto = cr.plugins_.AJAX.prototype;
+	pluginProto.Type = function(plugin)
+	{
+		this.plugin = plugin;
+		this.runtime = plugin.runtime;
+	};
+	var typeProto = pluginProto.Type.prototype;
+	typeProto.onCreate = function()
+	{
+	};
+	pluginProto.Instance = function(type)
+	{
+		this.type = type;
+		this.runtime = type.runtime;
+		this.lastData = "";
+		this.curTag = "";
+		this.progress = 0;
+	};
+	var instanceProto = pluginProto.Instance.prototype;
+	instanceProto.onCreate = function()
+	{
+	};
+	instanceProto.doRequest = function (tag_, url_)
+	{
+		if (this.runtime.isDomFree)
+			return;
+		var this_ = this;
+		jQuery.ajax({
+			"dataType": "text",
+			"url": url_,
+			"success": function(data)
+			{
+				this_.lastData = data;
+				this_.curTag = tag_;
+				this_.runtime.trigger(cr.plugins_.AJAX.prototype.cnds.OnComplete, this_);
+			},
+			"error": function()
+			{
+				this_.curTag = tag_;
+				this_.runtime.trigger(cr.plugins_.AJAX.prototype.cnds.OnError, this_);
+			},
+			"progress": function(jqXHR, e)
+			{
+				if (!e["lengthComputable"])
+					return;
+				this_.progress = e.loaded / e.total;
+				this_.curTag = tag_;
+				this_.runtime.trigger(cr.plugins_.AJAX.prototype.cnds.OnProgress, this_);
+			}
+		});
+	};
+	pluginProto.cnds = {};
+	var cnds = pluginProto.cnds;
+	cnds.OnComplete = function (tag)
+	{
+		return tag.toLowerCase() === this.curTag.toLowerCase();
+	};
+	cnds.OnError = function (tag)
+	{
+		return tag.toLowerCase() === this.curTag.toLowerCase();
+	};
+	cnds.OnProgress = function (tag)
+	{
+		return tag.toLowerCase() === this.curTag.toLowerCase();
+	};
+	pluginProto.acts = {};
+	var acts = pluginProto.acts;
+	acts.Request = function (tag_, url_)
+	{
+		this.doRequest(tag_, url_);
+	};
+	acts.RequestFile = function (tag_, file_)
+	{
+		this.doRequest(tag_, file_);
+	};
+	pluginProto.exps = {};
+	var exps = pluginProto.exps;
+	exps.LastData = function (ret)
+	{
+		ret.set_string(this.lastData);
+	};
+	exps.Progress = function (ret)
+	{
+		ret.set_float(this.progress);
+	};
+}());
+;
+;
 cr.plugins_.Audio = function(runtime)
 {
 	this.runtime = runtime;
@@ -7707,6 +7848,361 @@ cr.plugins_.Audio = function(runtime)
 }());
 ;
 ;
+cr.plugins_.Browser = function(runtime)
+{
+	this.runtime = runtime;
+};
+(function ()
+{
+	var pluginProto = cr.plugins_.Browser.prototype;
+	pluginProto.Type = function(plugin)
+	{
+		this.plugin = plugin;
+		this.runtime = plugin.runtime;
+	};
+	var typeProto = pluginProto.Type.prototype;
+	typeProto.onCreate = function()
+	{
+	};
+	pluginProto.Instance = function(type)
+	{
+		this.type = type;
+		this.runtime = type.runtime;
+	};
+	var instanceProto = pluginProto.Instance.prototype;
+	instanceProto.onCreate = function()
+	{
+		if (typeof navigator.onLine !== "undefined")
+		{
+			window.addEventListener("online", (function (self) {
+				return function() {
+					self.runtime.trigger(cr.plugins_.Browser.prototype.cnds.OnOnline, self);
+				};
+			})(this));
+			window.addEventListener("offline", (function (self) {
+				return function() {
+					self.runtime.trigger(cr.plugins_.Browser.prototype.cnds.OnOffline, self);
+				};
+			})(this));
+		}
+		if (typeof window.applicationCache !== "undefined")
+		{
+			window.applicationCache.addEventListener('updateready', (function (self) {
+				return function() {
+					self.runtime.loadingprogress = 1;
+					self.runtime.trigger(cr.plugins_.Browser.prototype.cnds.OnUpdateReady, self);
+				};
+			})(this));
+			window.applicationCache.addEventListener('progress', (function (self) {
+				return function(e) {
+					self.runtime.loadingprogress = e["loaded"] / e["total"];
+				};
+			})(this));
+		}
+		document.addEventListener("appMobi.device.update.available", (function (self) {
+			return function() {
+				self.runtime.trigger(cr.plugins_.Browser.prototype.cnds.OnUpdateReady, self);
+			};
+		})(this));
+		document.addEventListener("menubutton", (function (self) {
+			return function() {
+				self.runtime.trigger(cr.plugins_.Browser.prototype.cnds.OnMenuButton, self);
+			};
+		})(this));
+		document.addEventListener("searchbutton", (function (self) {
+			return function() {
+				self.runtime.trigger(cr.plugins_.Browser.prototype.cnds.OnSearchButton, self);
+			};
+		})(this));
+		this.runtime.addSuspendCallback((function (self) {
+			return function(s) {
+				if (s)
+				{
+					self.runtime.trigger(cr.plugins_.Browser.prototype.cnds.OnPageHidden, self);
+				}
+				else
+				{
+					self.runtime.trigger(cr.plugins_.Browser.prototype.cnds.OnPageVisible, self);
+				}
+			};
+		})(this));
+		this.is_arcade = (typeof window["is_scirra_arcade"] !== "undefined");
+	};
+	pluginProto.cnds = {};
+	var cnds = pluginProto.cnds;
+	cnds.CookiesEnabled = function()
+	{
+		return navigator.cookieEnabled;
+	};
+	cnds.IsOnline = function()
+	{
+		return navigator.onLine;
+	};
+	cnds.HasJava = function()
+	{
+		return navigator.javaEnabled();
+	};
+	cnds.OnOnline = function()
+	{
+		return true;
+	};
+	cnds.OnOffline = function()
+	{
+		return true;
+	};
+	cnds.IsDownloadingUpdate = function ()
+	{
+		if (typeof window["applicationCache"] === "undefined")
+			return false;
+		else
+			return window["applicationCache"]["status"] === window["applicationCache"]["DOWNLOADING"];
+	};
+	cnds.OnUpdateReady = function ()
+	{
+		return true;
+	};
+	cnds.PageVisible = function ()
+	{
+		return !this.runtime.isSuspended;
+	};
+	cnds.OnPageVisible = function ()
+	{
+		return true;
+	};
+	cnds.OnPageHidden = function ()
+	{
+		return true;
+	};
+	cnds.IsFullscreen = function ()
+	{
+		return !!(document["mozFullScreen"] || document["webkitIsFullScreen"] || document["fullScreen"]);
+	};
+	cnds.OnMenuButton = function ()
+	{
+		return true;
+	};
+	cnds.OnSearchButton = function ()
+	{
+		return true;
+	};
+	cnds.IsMetered = function ()
+	{
+		var connection = navigator["connection"] || navigator["mozConnection"] || navigator["webkitConnection"];
+		if (!connection)
+			return false;
+		return connection["metered"];
+	};
+	cnds.IsCharging = function ()
+	{
+		var battery = navigator["battery"] || navigator["mozBattery"] || navigator["webkitBattery"];
+		if (!battery)
+			return true;
+		return battery["charging"];
+	};
+	pluginProto.acts = {};
+	var acts = pluginProto.acts;
+	acts.Alert = function (msg)
+	{
+		alert(msg.toString());
+	};
+	acts.Close = function ()
+	{
+		if (!this.is_arcade)
+			window.close();
+	};
+	acts.Focus = function ()
+	{
+		if (!this.is_arcade)
+			window.focus();
+	};
+	acts.Blur = function ()
+	{
+		if (!this.is_arcade)
+			window.blur();
+	};
+	acts.GoBack = function ()
+	{
+		if (!this.is_arcade)
+			window.back();
+	};
+	acts.GoForward = function ()
+	{
+		if (!this.is_arcade)
+			window.forward();
+	};
+	acts.GoHome = function ()
+	{
+		if (!this.is_arcade)
+			window.home();
+	};
+	acts.GoToURL = function (url)
+	{
+		if (!this.is_arcade)
+			window.location = url;
+	};
+	acts.GoToURLWindow = function (url, tag)
+	{
+		if (!this.is_arcade)
+			window.open(url, tag);
+	};
+	acts.Reload = function ()
+	{
+		if (!this.is_arcade)
+			window.location.reload();
+	};
+	acts.RequestFullScreen = function (stretchmode)
+	{
+		if (this.is_arcade)
+			return;
+		if (document["mozFullScreen"] || document["webkitIsFullScreen"] || document["fullScreen"])
+			return;
+		window["c2resizestretchmode"] = (stretchmode > 0 ? 1 : 0);
+		this.runtime.fullscreen_scaling = (stretchmode >= 2 ? stretchmode : 0);
+		var elem = this.runtime.canvasdiv || this.runtime.canvas;
+		if (!cr.is_undefined(elem["webkitRequestFullScreen"]))
+		{
+			if (typeof Element !== "undefined" && typeof Element["ALLOW_KEYBOARD_INPUT"] !== "undefined")
+				elem["webkitRequestFullScreen"](Element["ALLOW_KEYBOARD_INPUT"]);
+			else
+				elem["webkitRequestFullScreen"]();
+		}
+		else if (!cr.is_undefined(elem["mozRequestFullScreen"]))
+			elem["mozRequestFullScreen"]();
+		else if (!cr.is_undefined(elem["requestFullscreen"]))
+			elem["requestFullscreen"]();
+	};
+	acts.CancelFullScreen = function ()
+	{
+		if (this.is_arcade)
+			return;
+		if (!cr.is_undefined(document["webkitCancelFullScreen"]))
+			document["webkitCancelFullScreen"]();
+		if (!cr.is_undefined(document["mozCancelFullScreen"]))
+			document["mozCancelFullScreen"]();
+		if (!cr.is_undefined(document["exitFullscreen"]))
+			document["exitFullscreen"]();
+	};
+	acts.Vibrate = function (pattern_)
+	{
+		try {
+			var arr = pattern_.split(",");
+			var i, len;
+			for (i = 0, len = arr.length; i < len; i++)
+			{
+				arr[i] = parseInt(arr[i], 10);
+			}
+			var vibrate = navigator["mozVibrate"] || navigator["webkitVibrate"] || navigator["vibrate"];
+			if (vibrate)
+				vibrate(arr);
+		}
+		catch (e) {}
+	};
+	pluginProto.exps = {};
+	var exps = pluginProto.exps;
+	exps.URL = function (ret)
+	{
+		ret.set_string(window.location.toString());
+	};
+	exps.Protocol = function (ret)
+	{
+		ret.set_string(window.location.protocol);
+	};
+	exps.Domain = function (ret)
+	{
+		ret.set_string(window.location.hostname);
+	};
+	exps.PathName = function (ret)
+	{
+		ret.set_string(window.location.pathname);
+	};
+	exps.Hash = function (ret)
+	{
+		ret.set_string(window.location.hash);
+	};
+	exps.Referrer = function (ret)
+	{
+		ret.set_string(document.referrer);
+	};
+	exps.Title = function (ret)
+	{
+		ret.set_string(document.title);
+	};
+	exps.Name = function (ret)
+	{
+		ret.set_string(navigator.appName);
+	};
+	exps.Version = function (ret)
+	{
+		ret.set_string(navigator.appVersion);
+	};
+	exps.Language = function (ret)
+	{
+		if (navigator.language)
+			ret.set_string(navigator.language);
+		else
+			ret.set_string("");
+	};
+	exps.Platform = function (ret)
+	{
+		ret.set_string(navigator.platform);
+	};
+	exps.Product = function (ret)
+	{
+		if (navigator.product)
+			ret.set_string(navigator.product);
+		else
+			ret.set_string("");
+	};
+	exps.Vendor = function (ret)
+	{
+		if (navigator.vendor)
+			ret.set_string(navigator.vendor);
+		else
+			ret.set_string("");
+	};
+	exps.UserAgent = function (ret)
+	{
+		ret.set_string(navigator.userAgent);
+	};
+	exps.QueryString = function (ret)
+	{
+		ret.set_string(window.location.search);
+	};
+	exps.QueryParam = function (ret, paramname)
+	{
+		var match = RegExp('[?&]' + paramname + '=([^&]*)').exec(window.location.search);
+		if (match)
+			ret.set_string(decodeURIComponent(match[1].replace(/\+/g, ' ')));
+		else
+			ret.set_string("");
+	};
+	exps.Bandwidth = function (ret)
+	{
+		var connection = navigator["connection"] || navigator["mozConnection"] || navigator["webkitConnection"];
+		if (!connection)
+			ret.set_float(Number.POSITIVE_INFINITY);
+		else
+			ret.set_float(connection["bandwidth"]);
+	};
+	exps.BatteryLevel = function (ret)
+	{
+		var battery = navigator["battery"] || navigator["mozBattery"] || navigator["webkitBattery"];
+		if (!battery)
+			ret.set_float(1);
+		else
+			ret.set_float(battery["level"]);
+	};
+	exps.BatteryTimeLeft = function (ret)
+	{
+		var battery = navigator["battery"] || navigator["mozBattery"] || navigator["webkitBattery"];
+		if (!battery)
+			ret.set_float(Number.POSITIVE_INFINITY);
+		else
+			ret.set_float(battery["dischargingTime"]);
+	};
+}());
+;
+;
 cr.plugins_.Button = function(runtime)
 {
 	this.runtime = runtime;
@@ -7867,6 +8363,162 @@ cr.plugins_.Button = function(runtime)
 	};
 	pluginProto.exps = {};
 	var exps = pluginProto.exps;
+}());
+;
+;
+cr.plugins_.HTML_Div = function(runtime)
+{
+	this.runtime = runtime;
+};
+(function ()
+{
+	var pluginProto = cr.plugins_.HTML_Div.prototype;
+	pluginProto.Type = function(plugin)
+	{
+		this.plugin = plugin;
+		this.runtime = plugin.runtime;
+	};
+	var typeProto = pluginProto.Type.prototype;
+	typeProto.onCreate = function()
+	{
+	};
+	pluginProto.Instance = function(type)
+	{
+		this.type = type;
+		this.runtime = type.runtime;
+		this.divloaded=0;
+	};
+	var instanceProto = pluginProto.Instance.prototype;
+	instanceProto.onCreate = function()
+	{
+		this.elem = document.createElement("div");
+		this.elem.innerHTML=this.properties[1];
+		this.elem.style.cssText=this.properties[2];
+		jQuery(this.elem).appendTo("body");
+		if (this.properties[0] === 0)
+		{
+			jQuery(this.elem).hide();
+			this.visible = false;
+		}
+		this.updatePosition();
+		this.runtime.tickMe(this);
+	};
+	instanceProto.onDestroy = function ()
+	{
+		jQuery(this.elem).remove();
+		this.elem = null;
+	};
+	instanceProto.tick = function ()
+	{
+		this.updatePosition();
+	};
+	instanceProto.updatePosition = function ()
+	{
+		var left = this.layer.layerToCanvas(this.x, this.y, true);
+		var top = this.layer.layerToCanvas(this.x, this.y, false);
+		var right = this.layer.layerToCanvas(this.x + this.width, this.y + this.height, true);
+		var bottom = this.layer.layerToCanvas(this.x + this.width, this.y + this.height, false);
+		if (!this.visible || !this.layer.visible || right <= 0 || bottom <= 0 || left >= this.runtime.width || top >= this.runtime.height)
+		{
+			jQuery(this.elem).hide();
+			return;
+		}
+		if (left < 1)
+			left = 1;
+		if (top < 1)
+			top = 1;
+		if (right >= this.runtime.width)
+			right = this.runtime.width - 1;
+		if (bottom >= this.runtime.height)
+			bottom = this.runtime.height - 1;
+		jQuery(this.elem).show();
+		var offx = left + jQuery(this.runtime.canvas).offset().left;
+		var offy = top + jQuery(this.runtime.canvas).offset().top;
+		jQuery(this.elem).offset({left: offx, top: offy});
+		jQuery(this.elem).width(right - left);
+		jQuery(this.elem).height(bottom - top);
+	};
+	instanceProto.draw = function(ctx)
+	{
+	};
+	instanceProto.drawGL = function(glw)
+	{
+	};
+	pluginProto.cnds = {};
+	var cnds = pluginProto.cnds;
+	cnds.CompareinnerHTML = function (text, case_)
+	{
+			return this.elem.innerHTML === text;
+	};
+	cnds.CompareStyle = function (text, case_)
+	{
+			return this.elem.style.cssText === text;
+	};
+	cnds.OnComplete = function (hmm)
+	{
+		return true;
+	};
+	cnds.OnError = function ()
+	{
+		return true;
+	};
+	pluginProto.acts = {};
+	var acts = pluginProto.acts;
+	acts.SetInnerHTML = function (text)
+	{
+		this.elem.innerHTML = text;
+	};
+	acts.LoadDiv = function (url_,postdata_)
+	{
+		if(postdata_.length){
+				jQuery.ajax({
+					context: this,
+					dataType: "text",
+					type: "POST",
+					url: url_,
+					data: postdata_,
+					success: function(data) {
+						this.elem.innerHTML=data;
+						this.runtime.trigger(cr.plugins_.HTML_Div.prototype.cnds.OnComplete, this);
+					},
+					error: function() {
+						this.runtime.trigger(cr.plugins_.HTML_Div.prototype.cnds.OnError, this);
+					}
+				});
+			} else {
+				jQuery.ajax({
+					context: this,
+					dataType: "text",
+					type: "GET",
+					url: url_,
+					success: function(data) {
+						this.elem.innerHTML=data;
+						this.runtime.trigger(cr.plugins_.HTML_Div.prototype.cnds.OnComplete, this);
+					},
+					error: function() {
+						this.runtime.trigger(cr.plugins_.HTML_Div.prototype.cnds.OnError, this);
+					}
+				});
+			};
+	};
+	acts.SetStyle = function (text)
+	{
+		this.elem.style.cssText = text;
+	};
+	acts.SetVisible = function (vis)
+	{
+		this.visible = (vis !== 0);
+	};
+	pluginProto.exps = {};
+	var exps = pluginProto.exps;
+	exps.GetInnerHTML = function (ret)
+	{
+		ret.set_string(this.elem.innerHTML);
+	};
+	exps.GetStyle = function (ret)
+	{
+		ret.set_string(this.elem.style.cssText);
+	};
 }());
 ;
 ;
@@ -10372,6 +11024,79 @@ cr.plugins_.WebStorage = function(runtime)
 }());
 ;
 ;
+cr.plugins_.ajaxPost = function(runtime)
+{
+	this.runtime = runtime;
+};
+(function ()
+{
+	var pluginProto = cr.plugins_.ajaxPost.prototype;
+	pluginProto.Type = function(plugin)
+	{
+		this.plugin = plugin;
+		this.runtime = plugin.runtime;
+	};
+	var typeProto = pluginProto.Type.prototype;
+	typeProto.onCreate = function()
+	{
+	};
+	pluginProto.Instance = function(type)
+	{
+		this.type = type;
+		this.runtime = type.runtime;
+		this.lastData = "";
+		this.curTag = "";
+		this.dataToSend= ""; // Joe7
+	};
+	var instanceProto = pluginProto.Instance.prototype;
+	instanceProto.onCreate = function()
+	{
+	};
+	pluginProto.cnds = {};
+	var cnds = pluginProto.cnds;
+	cnds.OnComplete = function (tag)
+	{
+		return tag.toLowerCase() === this.curTag.toLowerCase();
+	};
+	cnds.OnError = function (tag)
+	{
+		return tag.toLowerCase() === this.curTag.toLowerCase();
+	};
+	pluginProto.acts = {};
+	var acts = pluginProto.acts;
+	acts.sendData = function (data) //Joe7
+	{
+		this.dataToSend= data;
+	},
+	acts.Request = function (tag_, url_)
+	{
+		var context_obj = { tag: tag_, inst: this };
+		jQuery.ajax({
+			type: "POST", 			// Joe7
+			data: this.dataToSend,	// Joe7
+			context: context_obj,
+			dataType: "text",
+			url: url_,
+			success: function(data) {
+				this.inst.lastData = data;
+				this.inst.curTag = this.tag;
+				this.inst.runtime.trigger(cr.plugins_.ajaxPost.prototype.cnds.OnComplete, this.inst);
+			},
+			error: function() {
+				this.inst.curTag = this.tag;
+				this.inst.runtime.trigger(cr.plugins_.ajaxPost.prototype.cnds.OnError, this.inst);
+			}
+		});
+	};
+	pluginProto.exps = {};
+	var exps = pluginProto.exps;
+	exps.lastData = function (ret)
+	{
+		ret.set_string(this.lastData);
+	}
+}());
+;
+;
 cr.behaviors.EightDir = function(runtime)
 {
 	this.runtime = runtime;
@@ -11446,6 +12171,26 @@ cr.getProjectModel = function() { return [
 	null,
 	[
 	[
+		cr.plugins_.AJAX,
+		true,
+		false,
+		false,
+		false,
+		false,
+		false,
+		false
+	]
+,	[
+		cr.plugins_.ajaxPost,
+		true,
+		false,
+		false,
+		false,
+		false,
+		false,
+		false
+	]
+,	[
 		cr.plugins_.Audio,
 		true,
 		false,
@@ -11466,7 +12211,17 @@ cr.getProjectModel = function() { return [
 		false
 	]
 ,	[
-		cr.plugins_.TextBox,
+		cr.plugins_.Browser,
+		true,
+		false,
+		false,
+		false,
+		false,
+		false,
+		false
+	]
+,	[
+		cr.plugins_.HTML_Div,
 		false,
 		true,
 		true,
@@ -11496,21 +12251,21 @@ cr.getProjectModel = function() { return [
 		false
 	]
 ,	[
-		cr.plugins_.Particles,
-		false,
-		true,
-		true,
-		false,
-		true,
-		true,
-		true
-	]
-,	[
 		cr.plugins_.Sprite,
 		false,
 		true,
 		true,
 		true,
+		true,
+		true,
+		true
+	]
+,	[
+		cr.plugins_.Particles,
+		false,
+		true,
+		true,
+		false,
 		true,
 		true,
 		true
@@ -11524,6 +12279,16 @@ cr.getProjectModel = function() { return [
 		true,
 		true,
 		true
+	]
+,	[
+		cr.plugins_.TextBox,
+		false,
+		true,
+		true,
+		true,
+		false,
+		false,
+		false
 	]
 ,	[
 		cr.plugins_.WebStorage,
@@ -11955,7 +12720,7 @@ cr.getProjectModel = function() { return [
 	]
 ,	[
 		"t20",
-		cr.plugins_.Button,
+		cr.plugins_.Text,
 		false,
 		0,
 		1,
@@ -11972,40 +12737,6 @@ cr.getProjectModel = function() { return [
 	]
 ,	[
 		"t21",
-		cr.plugins_.Text,
-		false,
-		0,
-		1,
-		null,
-		null,
-		[
-		[
-			"Pin",
-			cr.behaviors.Pin
-		]
-		],
-		false,
-		false
-	]
-,	[
-		"t22",
-		cr.plugins_.Text,
-		false,
-		0,
-		1,
-		null,
-		null,
-		[
-		[
-			"Pin",
-			cr.behaviors.Pin
-		]
-		],
-		false,
-		false
-	]
-,	[
-		"t23",
 		cr.plugins_.Sprite,
 		false,
 		0,
@@ -12029,6 +12760,139 @@ cr.getProjectModel = function() { return [
 			"CustomMovement",
 			cr.behaviors.custom
 		]
+		],
+		false,
+		false
+	]
+,	[
+		"t22",
+		cr.plugins_.AJAX,
+		false,
+		0,
+		0,
+		null,
+		null,
+		[
+		],
+		false,
+		false
+		,[]
+	]
+,	[
+		"t23",
+		cr.plugins_.Browser,
+		false,
+		0,
+		0,
+		null,
+		null,
+		[
+		],
+		false,
+		false
+		,[]
+	]
+,	[
+		"t24",
+		cr.plugins_.ajaxPost,
+		false,
+		0,
+		0,
+		null,
+		null,
+		[
+		],
+		false,
+		false
+		,[]
+	]
+,	[
+		"t25",
+		cr.plugins_.HTML_Div,
+		false,
+		0,
+		0,
+		null,
+		null,
+		[
+		],
+		false,
+		false
+	]
+,	[
+		"t26",
+		cr.plugins_.Button,
+		false,
+		0,
+		0,
+		null,
+		null,
+		[
+		],
+		false,
+		false
+	]
+,	[
+		"t27",
+		cr.plugins_.Button,
+		false,
+		0,
+		0,
+		null,
+		null,
+		[
+		],
+		false,
+		false
+	]
+,	[
+		"t28",
+		cr.plugins_.Text,
+		false,
+		0,
+		0,
+		null,
+		null,
+		[
+		],
+		false,
+		false
+	]
+,	[
+		"t29",
+		cr.plugins_.Text,
+		false,
+		0,
+		0,
+		null,
+		null,
+		[
+		],
+		false,
+		false
+	]
+,	[
+		"t30",
+		cr.plugins_.Text,
+		false,
+		0,
+		0,
+		null,
+		null,
+		[
+		],
+		false,
+		false
+	]
+,	[
+		"t31",
+		cr.plugins_.Text,
+		false,
+		0,
+		0,
+		null,
+		null,
+		[
 		],
 		false,
 		false
@@ -12084,7 +12948,7 @@ cr.getProjectModel = function() { return [
 			1,
 			[
 			[
-				[319, 6, 0, 639, 13, 0, 0, 1, 0.5, 0.5],
+				[320, 6, 0, 641, 13, 0, 0, 1, 0.5, 0.5],
 				1,
 				[
 				],
@@ -12504,7 +13368,7 @@ cr.getProjectModel = function() { return [
 				]
 			]
 ,			[
-				[279, 349, 0, 72, 24, 0, 0, 1, 0, 0],
+				[299, 440, 0, 72, 24, 0, 0, 1, 0, 0],
 				11,
 				[
 				],
@@ -12521,20 +13385,20 @@ cr.getProjectModel = function() { return [
 				]
 			]
 ,			[
-				[331, 583, 0, 271, 151, 0, 0, 1, 0.5, 0.5],
+				[315, 251.5, 0, 271, 160, 0, 0, 1, 0.5, 0.5],
 				18,
 				[
 				],
 				[
 				],
 				[
-					0,
+					1,
 					0,
 					0
 				]
 			]
 ,			[
-				[211, 612, 0, 147, 22, 0, 0, 1, 0, 0],
+				[195, 285, 0, 147, 22, 0, 0, 1, 0, 0],
 				19,
 				[
 				],
@@ -12546,7 +13410,7 @@ cr.getProjectModel = function() { return [
 					"",
 					"",
 					"",
-					1,
+					0,
 					1,
 					0,
 					0,
@@ -12555,7 +13419,7 @@ cr.getProjectModel = function() { return [
 				]
 			]
 ,			[
-				[368, 614, 0, 72, 24, 0, 0, 1, 0, 0],
+				[189, 255, 0, 258, 30, 0, 0, 1, 0, 0],
 				20,
 				[
 				],
@@ -12564,49 +13428,28 @@ cr.getProjectModel = function() { return [
 				]
 				],
 				[
-					"Submit",
-					"",
+					"Type in name and submit your time",
 					1,
+					"12pt Arial",
+					"rgb(0,0,0)",
+					0,
+					0,
+					0
+				]
+			]
+,			[
+				[354, 285, 0, 72, 24, 0, 0, 1, 0, 0],
+				27,
+				[
+				],
+				[
+				],
+				[
+					"submit",
+					"",
+					0,
 					1,
 					""
-				]
-			]
-,			[
-				[202, 519, 0, 258, 30, 0, 0, 1, 0, 0],
-				21,
-				[
-				],
-				[
-				[
-				]
-				],
-				[
-					"Type in name and submit your time",
-					0,
-					"12pt Arial",
-					"rgb(0,0,0)",
-					0,
-					0,
-					0
-				]
-			]
-,			[
-				[216, 573, 0, 98, 30, 0, 0, 1, 0, 0],
-				22,
-				[
-				],
-				[
-				[
-				]
-				],
-				[
-					"",
-					0,
-					"12pt Arial",
-					"rgb(0,0,0)",
-					0,
-					0,
-					0
 				]
 			]
 			]
@@ -12646,7 +13489,7 @@ cr.getProjectModel = function() { return [
 				]
 			]
 ,			[
-				[643, 314, 0, 41.4729, 41.4729, 0, 0, 1, 0.5, 0.5],
+				[642, 315, 0, 41.4729, 41.4729, 0, 0, 1, 0.5, 0.5],
 				8,
 				[
 				],
@@ -12661,7 +13504,7 @@ cr.getProjectModel = function() { return [
 				]
 			]
 ,			[
-				[287, 442, 0, 114, 30, 0, 0, 1, 0, 0],
+				[298, 442, 0, 114, 30, 0, 0, 1, 0, 0],
 				13,
 				[
 				],
@@ -12714,6 +13557,57 @@ cr.getProjectModel = function() { return [
 					0
 				]
 			]
+,			[
+				[356, 216, 0, 76, 30, 0, 0, 1, 0, 0],
+				28,
+				[
+				],
+				[
+				],
+				[
+					"Text",
+					1,
+					"16pt Arial",
+					"rgb(0,0,0)",
+					0,
+					0,
+					0
+				]
+			]
+,			[
+				[252, 180, 0, 127, 30, 0, 0, 1, 0, 0],
+				30,
+				[
+				],
+				[
+				],
+				[
+					"CONGRATS",
+					1,
+					"16pt Arial",
+					"rgb(0,0,0)",
+					0,
+					0,
+					0
+				]
+			]
+,			[
+				[258, 218, 0, 95, 30, 0, 0, 1, 0, 0],
+				31,
+				[
+				],
+				[
+				],
+				[
+					"Your time is:",
+					1,
+					"12pt Arial",
+					"rgb(0,0,0)",
+					0,
+					0,
+					0
+				]
+			]
 			]
 		]
 		],
@@ -12726,6 +13620,12 @@ cr.getProjectModel = function() { return [
 		"Event sheet 1",
 		[
 		[
+			1,
+			"SuperTotalTime",
+			1,
+			"0:00"
+		]
+,		[
 			1,
 			"PreStartTime",
 			0,
@@ -13160,7 +14060,7 @@ cr.getProjectModel = function() { return [
 						]
 					]
 ,					[
-						22,
+						28,
 						cr.plugins_.Text.prototype.acts.SetText,
 						null
 						,[
@@ -13173,111 +14073,219 @@ cr.getProjectModel = function() { return [
 						]
 						]
 					]
-					]
-				]
-,				[
-					0,
-					null,
-					false,
-					[
-					[
-						8,
-						cr.plugins_.Sprite.prototype.cnds.OnCollision,
-						null,
-						false,
-						false,
-						false,
-						true
-						,[
-						[
-							4,
-							2
-						]
-						]
-					]
-					],
-					[
-					[
-						4,
-						cr.plugins_.Audio.prototype.acts.Play,
-						null
-						,[
-						[
-							2,
-							["applause-04",false]
-						]
-,						[
-							3,
-							0
-						]
-,						[
-							1,
-							[
-								2,
-								""
-							]
-						]
-						]
-					]
-,					[
-						4,
-						cr.plugins_.Audio.prototype.acts.Play,
-						null
-						,[
-						[
-							2,
-							["cheering-03",false]
-						]
-,						[
-							3,
-							0
-						]
-,						[
-							1,
-							[
-								2,
-								""
-							]
-						]
-						]
-					]
 ,					[
 						-1,
-						cr.system_object.prototype.acts.SetTimescale,
+						cr.system_object.prototype.acts.SetVar,
 						null
 						,[
 						[
-							0,
-							[
-								0,
-								0
-							]
-						]
-						]
-					]
-,					[
-						14,
-						cr.plugins_.WebStorage.prototype.acts.StoreSession,
-						null
-						,[
-						[
-							1,
-							[
-								2,
-								"finalTime"
-							]
+							11,
+							"SuperTotalTime"
 						]
 ,						[
 							7,
 							[
-								19,
-								cr.system_object.prototype.exps["int"]
-								,[
+								23,
+								"TotalTime"
+							]
+						]
+						]
+					]
+					]
+					,[
+					[
+						0,
+						null,
+						false,
+						[
+						[
+							8,
+							cr.plugins_.Sprite.prototype.cnds.OnCollision,
+							null,
+							false,
+							false,
+							false,
+							true
+							,[
+							[
+								4,
+								2
+							]
+							]
+						]
+						],
+						[
+						[
+							4,
+							cr.plugins_.Audio.prototype.acts.Play,
+							null
+							,[
+							[
+								2,
+								["applause-04",false]
+							]
+,							[
+								3,
+								0
+							]
+,							[
+								1,
+								[
+									2,
+									""
+								]
+							]
+							]
+						]
+,						[
+							4,
+							cr.plugins_.Audio.prototype.acts.Play,
+							null
+							,[
+							[
+								2,
+								["cheering-03",false]
+							]
+,							[
+								3,
+								0
+							]
+,							[
+								1,
+								[
+									2,
+									""
+								]
+							]
+							]
+						]
+,						[
+							-1,
+							cr.system_object.prototype.acts.SetTimescale,
+							null
+							,[
+							[
+								0,
+								[
+									0,
+									0
+								]
+							]
+							]
+						]
+,						[
+							14,
+							cr.plugins_.WebStorage.prototype.acts.StoreSession,
+							null
+							,[
+							[
+								1,
+								[
+									2,
+									"finalTime"
+								]
+							]
+,							[
+								7,
+								[
+									19,
+									cr.system_object.prototype.exps["int"]
+									,[
 [
-									23,
-									"CurrentTime"
+										23,
+										"CurrentTime"
+									]
+									]
 								]
-								]
+							]
+							]
+						]
+,						[
+							18,
+							cr.plugins_.Sprite.prototype.acts.SetVisible,
+							null
+							,[
+							[
+								3,
+								1
+							]
+							]
+						]
+,						[
+							19,
+							cr.plugins_.TextBox.prototype.acts.SetVisible,
+							null
+							,[
+							[
+								3,
+								1
+							]
+							]
+						]
+,						[
+							20,
+							cr.plugins_.Text.prototype.acts.SetVisible,
+							null
+							,[
+							[
+								3,
+								1
+							]
+							]
+						]
+,						[
+							28,
+							cr.plugins_.Text.prototype.acts.SetVisible,
+							null
+							,[
+							[
+								3,
+								1
+							]
+							]
+						]
+,						[
+							27,
+							cr.plugins_.Button.prototype.acts.SetVisible,
+							null
+							,[
+							[
+								3,
+								1
+							]
+							]
+						]
+,						[
+							30,
+							cr.plugins_.Text.prototype.acts.SetVisible,
+							null
+							,[
+							[
+								3,
+								1
+							]
+							]
+						]
+,						[
+							31,
+							cr.plugins_.Text.prototype.acts.SetVisible,
+							null
+							,[
+							[
+								3,
+								1
+							]
+							]
+						]
+,						[
+							13,
+							cr.plugins_.Text.prototype.acts.SetVisible,
+							null
+							,[
+							[
+								3,
+								0
+							]
 							]
 						]
 						]
@@ -13571,6 +14579,101 @@ cr.getProjectModel = function() { return [
 			]
 			]
 		]
+,		[
+			0,
+			null,
+			false,
+			[
+			[
+				-1,
+				cr.system_object.prototype.cnds.EveryTick,
+				null,
+				false,
+				false,
+				false,
+				false
+			]
+			],
+			[
+			]
+		]
+,		[
+			0,
+			null,
+			false,
+			[
+			[
+				19,
+				cr.plugins_.TextBox.prototype.cnds.IsOnScreen,
+				null,
+				false,
+				false,
+				false,
+				false
+			]
+			],
+			[
+			[
+				24,
+				cr.plugins_.ajaxPost.prototype.acts.sendData,
+				null
+				,[
+				[
+					1,
+					[
+						10,
+						[
+							10,
+							[
+								10,
+								[
+									2,
+									"name="
+								]
+								,[
+									23,
+									"SuperTotalTime"
+								]
+							]
+							,[
+								2,
+								"&name="
+							]
+						]
+						,[
+							20,
+							19,
+							cr.plugins_.TextBox.prototype.exps.Text,
+							true,
+							null
+						]
+					]
+				]
+				]
+			]
+,			[
+				24,
+				cr.plugins_.ajaxPost.prototype.acts.Request,
+				null
+				,[
+				[
+					1,
+					[
+						2,
+						""
+					]
+				]
+,				[
+					1,
+					[
+						2,
+						"http://localhost/web-app/save-highscore.php"
+					]
+				]
+				]
+			]
+			]
+		]
 		]
 	]
 	],
@@ -13587,3 +14690,7 @@ cr.getProjectModel = function() { return [
 	false,
 	0
 ];};
+
+window["cr"] = cr;
+window["cr"]["createRuntime"] = cr.createRuntime;
+window["cr"]["createDCRuntime"] = cr.createDCRuntime;
