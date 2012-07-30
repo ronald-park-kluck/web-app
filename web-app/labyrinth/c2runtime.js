@@ -13489,7 +13489,7 @@ cr.getProjectModel = function() { return [
 				]
 			]
 ,			[
-				[642, 315, 0, 41.4729, 41.4729, 0, 0, 1, 0.5, 0.5],
+				[643, 315, 0, 41.4729, 41.4729, 0, 0, 1, 0.5, 0.5],
 				8,
 				[
 				],
@@ -14603,10 +14603,10 @@ cr.getProjectModel = function() { return [
 			false,
 			[
 			[
-				19,
-				cr.plugins_.TextBox.prototype.cnds.IsOnScreen,
+				27,
+				cr.plugins_.Button.prototype.cnds.OnClicked,
 				null,
-				false,
+				true,
 				false,
 				false,
 				false
@@ -14628,7 +14628,7 @@ cr.getProjectModel = function() { return [
 								10,
 								[
 									2,
-									"name="
+									"time="
 								]
 								,[
 									23,
@@ -14667,7 +14667,7 @@ cr.getProjectModel = function() { return [
 					1,
 					[
 						2,
-						"http://localhost/web-app/save-highscore.php"
+						"http://localhost/kluc0004/web-app/web-app/save-time.php"
 					]
 				]
 				]
