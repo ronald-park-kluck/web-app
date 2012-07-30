@@ -1,14 +1,13 @@
 -- phpMyAdmin SQL Dump
--- version 3.4.10.1
+-- version 3.3.9
 -- http://www.phpmyadmin.net
 --
 -- Host: localhost
--- Generation Time: Jul 29, 2012 at 06:11 PM
--- Server version: 5.5.20
--- PHP Version: 5.3.10
+-- Generation Time: Jul 30, 2012 at 07:06 PM
+-- Server version: 5.5.8
+-- PHP Version: 5.3.5
 
 SET SQL_MODE="NO_AUTO_VALUE_ON_ZERO";
-SET time_zone = "+00:00";
 
 
 /*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
@@ -27,22 +26,18 @@ SET time_zone = "+00:00";
 --
 
 CREATE TABLE IF NOT EXISTS `web_app` (
-  `time` int(11) NOT NULL,
+  `time` varchar(6) COLLATE utf8_unicode_ci NOT NULL,
   `name` varchar(20) COLLATE utf8_unicode_ci NOT NULL,
   `id` int(11) NOT NULL AUTO_INCREMENT,
-  PRIMARY KEY (`id`),
-  KEY `id` (`id`)
-) ENGINE=InnoDB  DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci AUTO_INCREMENT=4 ;
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB  DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci AUTO_INCREMENT=8 ;
 
 --
 -- Dumping data for table `web_app`
 --
 
 INSERT INTO `web_app` (`time`, `name`, `id`) VALUES
-(50, 'Ronald Park-Kluck', 1),
-(60, 'Ronald Park-Kluck', 2),
-(70, 'Ronald Park-Kluck', 3);
-
-/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
-/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
-/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
+('00:04', 'ronald', 4),
+('00:09', 'bill', 5),
+('00:06', 'timmy', 6),
+('01:07', 'ronald', 7);
