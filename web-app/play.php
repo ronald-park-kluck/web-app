@@ -6,7 +6,7 @@ $sql = $db->query('
 	SELECT time, name, id
 	FROM web_app
 	ORDER BY time ASC
-	LIMIT 10
+	LIMIT 15
 ');
 
 // Display the last error created by our database

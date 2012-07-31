@@ -3,9 +3,10 @@
 require_once 'includes/db.php';	
 
 $sql = $db->query('
-	SELECT id, movie_title, release_date
-	FROM movies
-	ORDER BY movie_title ASC
+	SELECT time, name, id
+	FROM web_app
+	ORDER BY time ASC
+	LIMIT 15
 ');
 
 // Display the last error created by our database
@@ -63,10 +64,10 @@ $results = $sql->fetchAll();
 						<dl>
 							<dt id="time">Time</dt>
 							<dt id="name">Name</dt>
-							<?php foreach ($results as $movie) : ?>
-								<dd id="data-1"><?php echo $movie['id']; ?></dd>
-								<dd id="data-2"><?php echo $movie['movie_title']; ?></dd>
-							<?php endforeach; ?>
+							<?php foreach ($results as $web_app) : ?>
+							<dd id="data-1"><?php echo $web_app['time']; ?></dd>
+							<dd id="data-2"><?php echo $web_app['name']; ?></dd>
+						<?php endforeach; ?>
 						</dl>
 					</fieldset>
 			</div>
