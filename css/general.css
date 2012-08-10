@@ -59,13 +59,22 @@ p {
 	width: 100%;
 }
 
+.content {
+	margin: 1em;
+	width: 40em;
+	height: 40em;
+	border: 0.1em solid #4b6a7c;
+	float: left;
+	background: url('../images/PuzzleImage.png') no-repeat;
+}
+
 .game {
 	margin: 1em;
 	width: 40em;
 	height: 40em;
 	border: 0.1em solid #4b6a7c;
 	float: left;
-	background-color: #fff;
+	background: #fff;
 }
 
 #right-side {

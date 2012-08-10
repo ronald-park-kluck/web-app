@@ -1,3 +1,21 @@
+<?php
+
+require_once 'includes/db.php';	
+
+$sql = $db->query('
+	SELECT time, name, id
+	FROM web_app
+	ORDER BY time ASC
+	LIMIT 15
+');
+
+// Display the last error created by our database
+//var_dump($db->errorInfo());
+
+$results = $sql->fetchAll();
+
+?>
+
 <!DOCTYPE HTML>
 	<html>
 	<head>
@@ -29,7 +47,7 @@
 		</header>
 		
 		<div class="main clearfix">
-			<div class="game">
+			<div class="content">
 				<p>About area</p>
 			</div>
 			
@@ -38,6 +56,17 @@
 					<p>Login to save your progress</p>
 					
 					<div class="fb-login-button" data-show-faces="true" data-width="100" data-max-rows="1"></div>
+				</fieldset>
+				
+				<fieldset id="record"><legend>Total Records</legend>
+					<dl>
+						<dt id="time">Time</dt>
+						<dt id="name">Name</dt>
+						<?php foreach ($results as $web_app) : ?>
+							<dd id="data-1"><?php echo $web_app['time']; ?></dd>
+							<dd id="data-2"><?php echo $web_app['name']; ?></dd>
+						<?php endforeach; ?>
+					</dl>
 				</fieldset>
 			</div>
 			

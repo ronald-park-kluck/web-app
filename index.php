@@ -48,7 +48,7 @@ $results = $sql->fetchAll();
 		</header>
 		
 		<div class="main clearfix">
-			<div class="game">
+			<div class="content">
 				<p>Game Area</p>
 			</div>
 			
