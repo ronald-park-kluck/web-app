@@ -5,9 +5,15 @@
 
 // Our username and password are kept in Environment variables, in .htaccess
 // This is for security, so they are never publicly visible in Github
-$user = getenv('DB_USER');       // the MySQL username
-$pass = getenv('DB_PASS');           // The MySQL password
-$data_source = getenv('DATA_SOURCE');
+$user = getenv('MYSQL_USERNAME');       // the MySQL username
+$pass = getenv('MYSQL_PASSWORD');   
+$host = getenv('MYSQL_DB_HOST');      // The MySQL password
+$name = getenv('MYSQL_DB_NAME');
+//$data_source = getenv('DATA_SOURCE');
+
+$data_source = sprintf('mysql:host=%s;dbname=%s', $host, $name )
+
+
 
 // PDO: PHP Data Objects
 // Allows us to connect to many different kinds of databases
