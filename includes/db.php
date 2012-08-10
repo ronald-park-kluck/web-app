@@ -9,9 +9,9 @@ $user = getenv('MYSQL_USERNAME');       // the MySQL username
 $pass = getenv('MYSQL_PASSWORD');   
 $host = getenv('MYSQL_DB_HOST');      // The MySQL password
 $name = getenv('MYSQL_DB_NAME');
-//$data_source = getenv('DATA_SOURCE');
 
-$data_source = sprintf('mysql:host=%s;dbname=%s', $host, $name )
+
+$data_source = sprintf('mysql:host=%s;dbname=%s', $host, $name );
 
 
 
