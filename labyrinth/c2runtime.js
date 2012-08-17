@@ -12191,7 +12191,7 @@ cr.getProjectModel = function() { return [
 		false
 	]
 ,	[
-		cr.plugins_.Audio,
+		cr.plugins_.Browser,
 		true,
 		false,
 		false,
@@ -12211,7 +12211,7 @@ cr.getProjectModel = function() { return [
 		false
 	]
 ,	[
-		cr.plugins_.Browser,
+		cr.plugins_.Audio,
 		true,
 		false,
 		false,
@@ -14667,7 +14667,7 @@ cr.getProjectModel = function() { return [
 					1,
 					[
 						2,
-						"http://localhost/kluc0004/web-app/web-app/save-time.php"
+						"http://ronaldkluck.phpfogapp.com/web-app/save-time.php"
 					]
 				]
 				]
