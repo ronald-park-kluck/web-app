@@ -12191,16 +12191,6 @@ cr.getProjectModel = function() { return [
 		false
 	]
 ,	[
-		cr.plugins_.Audio,
-		true,
-		false,
-		false,
-		false,
-		false,
-		false,
-		false
-	]
-,	[
 		cr.plugins_.Browser,
 		true,
 		false,
@@ -12221,6 +12211,16 @@ cr.getProjectModel = function() { return [
 		false
 	]
 ,	[
+		cr.plugins_.Audio,
+		true,
+		false,
+		false,
+		false,
+		false,
+		false,
+		false
+	]
+,	[
 		cr.plugins_.HTML_Div,
 		false,
 		true,
@@ -12231,7 +12231,7 @@ cr.getProjectModel = function() { return [
 		false
 	]
 ,	[
-		cr.plugins_.Mouse,
+		cr.plugins_.Keyboard,
 		true,
 		false,
 		false,
@@ -12241,7 +12241,7 @@ cr.getProjectModel = function() { return [
 		false
 	]
 ,	[
-		cr.plugins_.Keyboard,
+		cr.plugins_.Mouse,
 		true,
 		false,
 		false,
@@ -14671,6 +14671,32 @@ cr.getProjectModel = function() { return [
 					]
 				]
 				]
+			]
+,			[
+				24,
+				cr.plugins_.ajaxPost.prototype.acts.Request,
+				null
+				,[
+				[
+					1,
+					[
+						2,
+						""
+					]
+				]
+,				[
+					1,
+					[
+						2,
+						"http://localhost/kluc0004/web-app/save-time.php"
+					]
+				]
+				]
+			]
+,			[
+				-1,
+				cr.system_object.prototype.acts.RestartLayout,
+				null
 			]
 			]
 		]
