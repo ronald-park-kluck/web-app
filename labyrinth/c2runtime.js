@@ -14667,7 +14667,7 @@ cr.getProjectModel = function() { return [
 					1,
 					[
 						2,
-						"http://ronaldkluck.phpfogapp.com/save-time.php"
+						"http://localhost/kluc0004/web-app/save-time.php"
 					]
 				]
 				]
@@ -14688,7 +14688,7 @@ cr.getProjectModel = function() { return [
 					1,
 					[
 						2,
-						"http://localhost/kluc0004/web-app/save-time.php"
+						"http://ronaldkluck.phpfogapp.com/save-time.php"
 					]
 				]
 				]
